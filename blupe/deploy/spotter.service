@@ -1,0 +1,19 @@
+[Unit]
+Description=Spotter on Blupe YAM1
+After=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/blupe-spotter
+EnvironmentFile=/etc/blupe-spotter.env
+Environment=PYTHONPATH=/home/ubuntu/blupe-spotter/blupe
+ExecStart=/home/ubuntu/blupe-spotter/.venv/bin/uvicorn spotter_yam.app:create_app --factory --host 127.0.0.1 --port 8820 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+LimitCORE=0
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

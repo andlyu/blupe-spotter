@@ -1,0 +1,6 @@
+[submodule "blupe/vendor/remote-yam"]
+	path = blupe/vendor/remote-yam
+	url = https://github.com/andlyu/blupe-remote-yam.git
+[submodule "upstream/Spotter"]
+	path = upstream/Spotter
+	url = https://github.com/zqc3117/Spotter.git

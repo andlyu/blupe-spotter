@@ -1,0 +1,7 @@
+.spotterReadiness { margin: 0 0 1rem; max-width: 75ch; font-size: .875rem; line-height: 1.5; color: #344454; }
+.playgroundConsole .playgroundIntro { display: block; max-width: 75ch; }
+.cameras[data-layout="multi"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 2fr) minmax(0, 1fr); }
+.cameras[data-layout="multi"] figure[data-camera-role="top"] { grid-column: 1 / -1; grid-row: 1; }
+.cameras[data-layout="multi"] figure[data-camera-role="left"] { grid-column: 1; grid-row: 2; }
+.cameras[data-layout="multi"] figure[data-camera-role="right"] { grid-column: 2; grid-row: 2; }
+@media (max-width: 640px) { .spotterReadiness { font-size: .8125rem; margin-bottom: .75rem; } }
