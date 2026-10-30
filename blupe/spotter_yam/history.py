@@ -7,8 +7,9 @@ from remote_yam.run_search import rank_runs
 class ReceiptHistory:
     source = 'public archive and local run receipts'
 
-    def __init__(self, archive, names, robot_id):
+    def __init__(self, archive, names, robot_id, replays=None):
         self.archive, self.names, self.robot_id = archive, names, robot_id
+        self.replays = replays
 
     def pending(self, published):
         if not self.names.path.exists():
@@ -47,10 +48,18 @@ class ReceiptHistory:
                 'next_offset': offset+len(selected) if not metadata and offset+len(selected)<len(rows) else None}
 
     def details_for(self, rows):
-        published = [r for r in rows if r.get('video_status') != 'processing']
+        local = {r['episode_id']: clip for r in rows if self.replays
+                 and (clip := self.replays.get(r['episode_id'], self.robot_id))}
+        published = [r for r in rows if r['episode_id'] not in local
+                     and r.get('video_status') != 'processing']
         details = {r['episode_id']:r for r in self.archive.details_for(published)} if published else {}
-        return [details.get(r['episode_id'], dict(r)) for r in rows]
+        return [dict(r, **{k:v for k,v in local[r['episode_id']].items() if v is not None},
+                     video_status='ready') if r['episode_id'] in local
+                else details.get(r['episode_id'], dict(r)) for r in rows]
 
     def get(self, episode_id):
+        if self.replays and (clip := self.replays.get(episode_id, self.robot_id)):
+            row = self.names.pending(episode_id, self.robot_id) or {}
+            return dict(row, **{k:v for k,v in clip.items() if v is not None}, video_status='ready')
         rows = self.page(episode_id=episode_id)['runs']
         return rows[0] if rows else None

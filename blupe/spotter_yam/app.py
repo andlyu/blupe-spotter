@@ -6,6 +6,7 @@ import logging
 import math
 import os
 from pathlib import Path
+import re
 from threading import BoundedSemaphore
 import time
 from urllib import request
@@ -16,6 +17,7 @@ from remote_yam.controller_workspace import workspace_for_robot
 from remote_yam.robocurve_trajectory import RoboCurveTrajectory
 from remote_yam.yam_runpod_policy import MODELS
 from remote_yam.dream_worker_pool import DreamWorkerPool
+from remote_yam.quick_replays import QuickReplays
 from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
 from .ui import runner_script
@@ -59,7 +61,8 @@ class SpotterApp(HostedRunner):
                               and secret_file(self.vlm_key_file)))
         self.configured = bool(base_configured and vlm_configured)
         super().__init__(**kwargs)
-        self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id)
+        self.local_replays = QuickReplays(self.settings.get('replay_root'))
+        self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id, self.local_replays)
         self.dream_resident = None
         self.dream_preparation_task = None
         self.dream_preparation_failed = False
@@ -209,6 +212,19 @@ class SpotterApp(HostedRunner):
 
     async def public_extension(self, scope, receive, send, headers):
         name = scope.get('path', '')
+        clip = re.fullmatch(r'/api/quick-replays/(ep_[A-Za-z0-9_-]{1,100})/([0-9a-f]{64})\.mp4', name)
+        if scope.get('method') == 'GET' and clip:
+            eid, digest = clip.groups()
+            # Only this station's atomically installed metadata can expose media.
+            ready = self.local_replays.get(eid, self.robot_id)
+            result = (await asyncio.to_thread(self.local_replays.video, eid, digest, headers.get('range'))
+                      if ready and ready['video_sha256'] == digest else None)
+            if result is None:
+                await self.json(send, 404, {'error': 'Replay not available'})
+            else:
+                status, body, extra = result
+                await self.respond(send, status, body, 'video/mp4', extra)
+            return True
         if scope.get('method') == 'GET' and name == '/spotter/readiness':
             await self.json(send, 200, {'configured': self.runtime_configured(),
                                       'dream_runtime': self.dream_readiness()})
@@ -221,6 +237,16 @@ class SpotterApp(HostedRunner):
             await self.respond(send, 200, path.read_bytes(), 'text/javascript' if path.suffix == '.js' else 'text/css')
             return True
         return await super().public_extension(scope, receive, send, headers)
+
+    async def start_response(self, send, status, content_type, size, extra=()):
+        async def local_media(message):
+            if message['type'] == 'http.response.start':
+                message = dict(message, headers=[(key, value.replace(
+                    b'media-src https://huggingface.co', b"media-src 'self' https://huggingface.co"))
+                    if key == b'content-security-policy' else (key, value)
+                    for key, value in message['headers']])
+            await send(message)
+        await super().start_response(local_media, status, content_type, size, extra)
 
 
 def create_app():
@@ -235,7 +261,8 @@ def create_app():
                     max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')),
                     dream_credentials_file=os.environ.get('SPOTTER_DREAM_CREDENTIALS_FILE', ''),
                     dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''),
-                    dream_resident_dir=os.environ.get('SPOTTER_DREAM_RESIDENT_DIR', ''))
+                    dream_resident_dir=os.environ.get('SPOTTER_DREAM_RESIDENT_DIR', ''),
+                    replay_root=os.environ.get('SPOTTER_REPLAY_ROOT', ''))
     robot_id = os.environ.get('SPOTTER_ROBOT_ID', 'yam-1')
     robots = [{'id': robot_id, 'name': STATIONS[robot_id][0], 'url': public_origin + '/'}]
     other_origin = os.environ.get('SPOTTER_OTHER_STATION_ORIGIN', '')

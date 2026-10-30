@@ -134,6 +134,29 @@ A missing archive video is labeled “Video not published”; a run receipt and 
 totals do not establish that a replay exists. “Your runs” is limited to the current
 server session; retained public receipts remain in “All runs” after a restart.
 
+Robo-house can serve verified local previews with `SPOTTER_REPLAY_ROOT`, including
+byte-range seeking, without waiting for the public archive. Direct replay links
+read that cache first. The local metadata never replaces a recorded model with
+an unknown model or changes the runner's failure result.
+
+`deploy/spotter-replays.service` and its timer recover only Robo-house episodes
+listed in Spotter's durable run receipts. They read finalized footage already in
+the web host's publisher staging directory; they never contact the robot, reserve
+it, upload a dataset or run the publisher. Recovery verifies the native sample
+hash, all three robot-camera images and episode identity, then renders a bounded
+preview with the existing publisher renderer and installs it atomically. Missing
+optional observer references are omitted only from a separately hashed render
+input; native samples remain untouched. The renderer labels camera gaps.
+Incomplete robot-camera copies are retried every30seconds. This requires the
+existing recorder to have transferred the source footage to the web host.
+
+On the existing host, install these units as `blupe-spotter-replays.service` and
+`blupe-spotter-replays.timer`, enable the timer, and set Robo-house's
+`SPOTTER_REPLAY_ROOT=/home/ubuntu/.cache/blupe-spotter-replays`. These paths assume
+the existing trusted publisher environment and source checkout; no new robot
+access is configured. Preview pacing can accelerate motion and remove idle time,
+as recorded in its metadata; it does not establish physical task success.
+
 ## Validation and hosting
 
 Hosted page: [Spotter on Blupe](https://spotter.54.209.185.15.sslip.io/).

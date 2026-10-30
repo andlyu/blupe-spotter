@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry local Spotter Robo-house replay recovery
+
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=30
+Unit=blupe-spotter-replays.service
+
+[Install]
+WantedBy=timers.target

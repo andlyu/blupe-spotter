@@ -1,0 +1,15 @@
+[Unit]
+Description=Recover finalized Spotter Robo-house replays from web-host staging
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/blupe-spotter
+ExecStart=/home/ubuntu/blupe-publisher/.venv/bin/python /home/ubuntu/blupe-spotter/blupe/spotter_yam/recover_replays.py --database /home/ubuntu/blupe-spotter/blupe/vendor/remote-yam/codex-runner/data/run-names.sqlite3 --source-root /home/ubuntu/blupe-publisher/robo-house/working --cache /home/ubuntu/.cache/blupe-spotter-replays --work /home/ubuntu/.cache/blupe-spotter-replay-work --publisher /home/ubuntu/blupe-publisher --robot-id robot-ba8413962083809c
+TimeoutStartSec=300
+Nice=10
+CPUQuota=100%
+MemoryMax=768M
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
