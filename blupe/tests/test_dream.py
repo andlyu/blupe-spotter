@@ -1,0 +1,118 @@
+"""Lifecycle regressions at Spotter's stateful Dream-1 handoff."""
+from types import SimpleNamespace
+
+import pytest
+
+from spotter_yam.dream import SpotterDreamAdapter
+from spotter_yam.app import SpotterApp, ROBOHOUSE
+from test_spotter import adapter, observation
+
+
+def test_intervention_invalidates_smoothing_and_defers_sdk_reset(tmp_path):
+    base = SpotterDreamAdapter(provider='dream', model='dreamlabs/dream-1-beta',
+        credentials='unused', python='unused', directory=tmp_path,
+        camera_source=None, observation_source=None, robot_id=ROBOHOUSE)
+    base._commanded = {'old': 1}
+    base._pending_commanded = {'unexecuted': 1}
+    base._worker = SimpleNamespace(call=lambda *a, **k: pytest.fail('Do not reset concurrently with inference'))
+    base.supervisor_intervention()
+    assert base._commanded is base._pending_commanded is None
+    assert base._workspace_reset_pending is True
+    assert 'fresh measured state' in base._workspace_feedback
+
+
+def test_handoff_resets_sdk_before_requesting_fresh_prediction(tmp_path):
+    from remote_yam.dream_policy import state_input
+    calls = []
+    base = SpotterDreamAdapter(provider='dream', model='dreamlabs/dream-1-beta',
+        credentials='unused', python='unused', directory=tmp_path,
+        camera_source=None, observation_source=None, robot_id=ROBOHOUSE)
+    base._ready.set(); base._preparation = base._collector = object()
+    base._history.append({'stale': True})
+    base._commanded = base._pending_commanded = {'old': True}
+    measured = observation(); measured['jetson_id'] = ROBOHOUSE
+    tick = {'observation': state_input(measured, 'move'), 'observed_at': measured['observed_at']}
+    def fresh_ticks(*args, **kwargs):
+        assert calls[0] == 'reset' and not base._history
+        calls.append('fresh inputs')
+        return [tick]
+    def call(kind, **kwargs):
+        calls.append(kind)
+        if kind == 'reset': return {'ok': True}
+        assert kind == 'predict' and kwargs['commanded'] is None
+        return {'ok': True, 'result': {'action': {
+            key: [[0.]*6+[.5]]*2 for key in ('q_l_chunk', 'q_r_chunk')}}}
+    base._worker = SimpleNamespace(call=call)
+    base._wait_for_ticks = fresh_ticks
+    base.supervisor_intervention()
+    points = base.build_trajectory('move', measured, 4)
+    assert calls[:3] == ['reset', 'fresh inputs', 'predict']
+    assert points[0]['step_id'] == 4
+
+
+def test_dream_lifecycle_is_forwarded_and_live_camera_history_is_preserved(adapter):
+    calls = []
+    live_camera = object()
+    base = adapter.base
+    base.camera_source = live_camera
+    base.refresh_observation = None
+    base.start_preparation = lambda cancelled: calls.append(('start', cancelled()))
+    base.prepare_after_lease = lambda cancelled: calls.append(('lease', cancelled()))
+    base.close_transport = lambda: calls.append(('close', True))
+    adapter.supervisor.ready = lambda cancelled: calls.append(('supervisor', cancelled()))
+    adapter.preparation = lambda: calls.append(('geometry', True))
+    adapter.prepare_before_session('move')
+    assert [c[0] for c in calls] == ['start', 'supervisor', 'geometry']
+    adapter.prepare_after_lease(lambda: False)
+    adapter.refresh_observation = lambda: {'fresh': True}
+    adapter._connect_base()
+    assert base.refresh_observation() == {'fresh': True}
+    assert base.camera_source is live_camera and not hasattr(base, '_camera_source')
+    adapter.close_transport()
+    assert ('lease', False) in calls and ('close', True) in calls
+    assert base.cancelled()
+
+
+def test_every_repair_marks_a_causal_policy_handoff(adapter):
+    calls = []
+    adapter.base.supervisor_intervention = lambda: calls.append('invalidate')
+    adapter._plan('move', {'detected_failure': 'missed'})
+    assert calls == ['invalidate']
+    assert adapter._repair
+
+
+def test_robohouse_exposes_only_matching_dream_checkpoint(tmp_path):
+    import shutil
+    credentials, python = tmp_path/'credentials', tmp_path/'python'
+    credentials.touch(); python.touch()
+    app = SpotterApp(settings={'dream_credentials_file': str(credentials),
+        'dream_python': str(python), 'vlm_endpoint': 'https://vlm.example.com/v1'},
+        robot_id=ROBOHOUSE, public_origin='http://127.0.0.1:8821', development=True,
+        session_api='', camera_origin='http://127.0.0.1:8089')
+    try:
+        assert app.configured
+        assert set(app.runpod_providers) == {'spotter', 'dream'}
+        assert b'Dream-1 moves.' in app.page() and b'DreamZero moves.' not in app.page()
+        base = app.make_base('', tmp_path)
+        assert isinstance(base, SpotterDreamAdapter)
+        assert base.robot_id == ROBOHOUSE
+        assert 0 < base.effective_joint_step_deg < 20
+        with pytest.raises(Exception, match='Unknown station policy'):
+            app.make_base('dreamzero', tmp_path)
+        base.close_transport()
+    finally:
+        shutil.rmtree(app.root)
+
+
+def test_robohouse_missing_dream_runtime_cannot_start():
+    import shutil
+    app = SpotterApp(settings={'policy_endpoint': 'https://wrong-yam1.example.com',
+        'policy_key_file': 'unused', 'vlm_endpoint': 'https://vlm.example.com/v1'},
+        robot_id=ROBOHOUSE, public_origin='http://127.0.0.1:8821', development=True,
+        session_api='', camera_origin='http://127.0.0.1:8089')
+    try:
+        assert app.configured is False
+        with pytest.raises(Exception, match='need configuration'):
+            app.make_spotter('', '.')
+    finally:
+        shutil.rmtree(app.root)

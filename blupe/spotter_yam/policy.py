@@ -65,6 +65,7 @@ class SpotterAdapter:
         self.max_plan_rounds, self.preparation = max_plan_rounds, preparation
         self.history = deque(maxlen=history_windows)
         self.cancelled = lambda: False
+        self.refresh_observation = None
         self.interaction_sink = lambda *args, **kwargs: None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='spotter-supervisor')
         self._future = None
@@ -95,15 +96,27 @@ class SpotterAdapter:
                               policy_chunks=self._chunks, **details)
 
     def prepare_before_session(self, prompt):
-        self.base.cancelled = lambda: self._closed or self.cancelled()
-        self.base.interaction_sink = self.interaction_sink
-        self._event('prepare', 'Preparing DreamZero and the Spotter supervisor before joining the robot queue')
+        self._connect_base()
+        self._event('prepare', 'Preparing Spotter before joining the robot queue')
         self.base.start_preparation(self.base.cancelled)
         self.supervisor.ready(self.base.cancelled)
         if self.preparation: self.preparation()
-        self.base.prepare_before_session(prompt)
+        prepare = getattr(self.base, 'prepare_before_session', None)
+        if callable(prepare): prepare(prompt)
         self._check_cancelled()
         self._prepared = True
+
+    def _connect_base(self):
+        self.base.cancelled = lambda: self._closed or self.cancelled()
+        self.base.interaction_sink = self.interaction_sink
+        if hasattr(self.base, 'refresh_observation'):
+            self.base.refresh_observation = self.refresh_observation
+
+    def prepare_after_lease(self, cancelled):
+        self.cancelled = cancelled
+        self._connect_base()
+        prepare = getattr(self.base, 'prepare_after_lease', None)
+        if callable(prepare): prepare(self.base.cancelled)
 
     def _check_cancelled(self):
         if self.cancelled() or self._closed:
@@ -164,6 +177,8 @@ class SpotterAdapter:
         self._repair = deque(validate_plan(result))
         self._repair_context = {'why': str(result.get('why', ''))[:500],
                                 'expectation': result['expectation'][:2000]}
+        intervention = getattr(self.base, 'supervisor_intervention', None)
+        if callable(intervention): intervention()
         self._rounds += 1
         self._event('repair', self._repair_context['why'], expectation=self._repair_context['expectation'])
 
@@ -222,7 +237,7 @@ class SpotterAdapter:
                 self._post_policy_expectation = self._repair_context
                 self._repair_context = None
                 self._checked = self._chunks
-                self._event('handoff', 'Returning control to DreamZero; Spotter keeps watching')
+                self._event('handoff', 'Returning control to the policy; Spotter keeps watching')
                 break
             try:
                 return self._primitive(step, observation, first_step_id)
@@ -234,13 +249,15 @@ class SpotterAdapter:
             self._post_policy_expectation = self._repair_context
             self._repair_context = None
             self._checked = self._chunks
-            self._event('handoff', 'Repair segment finished; returning to DreamZero')
+            self._event('handoff', 'Repair segment finished; returning to the policy')
         if self._future is None and self._checked < self._chunks:
             self._start_review(prompt)
         self._check_cancelled()
-        self.base.cancelled = lambda: self._closed or self.cancelled()
-        self.base.interaction_sink = self.interaction_sink
-        self.base._camera_source = FixedFrames(window['frames'])
+        self._connect_base()
+        # DreamZero consumes a single snapshot. Dream-1 owns its live 5 Hz
+        # camera/state history; freezing that source would fabricate its window.
+        if hasattr(self.base, '_camera_source'):
+            self.base._camera_source = FixedFrames(window['frames'])
         points = self.base.build_trajectory(prompt, observation, first_step_id)
         self._check_cancelled()
         # A confirmed error that arrived during inference takes precedence over this chunk.
@@ -250,7 +267,7 @@ class SpotterAdapter:
                 # Re-enter from the same unexecuted measured state; the completed future is consumed above.
                 return self.build_trajectory(prompt, observation, first_step_id)
         self._last_kind = 'policy'
-        self._event('policy', 'DreamZero action chunk ready; Spotter supervises in parallel')
+        self._event('policy', 'Policy action chunk ready; Spotter supervises in parallel')
         return points
 
     def trajectory_completed(self, observation, waypoint_count):
@@ -263,6 +280,12 @@ class SpotterAdapter:
         self._closed = True
         if self._future: self._future[1].cancel()
         self._pool.shutdown(wait=False, cancel_futures=True)
+        close = getattr(self.base, 'close_transport', None)
+        if callable(close): close()
+
+    def trajectory_adjusted(self, details):
+        adjusted = getattr(self.base, 'trajectory_adjusted', None)
+        if self._last_kind == 'policy' and callable(adjusted): adjusted(details)
 
     def cancel_pending_request(self):
         self.close_transport()

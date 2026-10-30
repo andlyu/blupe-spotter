@@ -19,11 +19,11 @@ def runner_script():
         ": preparing ? (aspire ? '—' : 'Up next')":
             ": preparing ? (aspire || warmingModels ? '—' : 'Up next')",
         ": preparing ? 'Your run is preparing'":
-            ": warmingModels ? 'Preparing Spotter models' : preparing ? 'Your run is preparing'",
+            ": warmingModels ? 'Preparing Spotter' : preparing ? 'Your run is preparing'",
         "? 'The robot is getting ready. You can stop your run here.'":
-            "? (warmingModels ? 'Preparing models before joining the robot queue. The run timer has not started.' : 'The robot is getting ready. You can stop your run here.')",
+            "? (warmingModels ? 'Preparing Spotter before joining the robot queue. The run timer has not started.' : 'The robot is getting ready. You can stop your run here.')",
         ": preparing ? 'The robot is getting ready for your run.'":
-            ": warmingModels ? 'Models are preparing before the robot queue.' : preparing ? 'The robot is getting ready for your run.'",
+            ": warmingModels ? 'Spotter is preparing before the robot queue.' : preparing ? 'The robot is getting ready for your run.'",
     }
     for before, after in edits.items():
         expected = 2 if before.startswith("['groot'") else 1

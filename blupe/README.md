@@ -1,12 +1,12 @@
 # Spotter on Blupe
 
 This separate application ports the **Spotter supervision approach** to physical
-YAM1 arms. It preserves the upstream Spotter source and licenses, and pins
+YAM arms. It preserves the upstream Spotter source and licenses, and pins
 `andlyu/blupe-remote-yam` as a Git submodule for camera capture, session leases,
 trajectory submission, measured execution feedback, IK and gateway checks.
 It is an embodiment port, not a reproduction of the paper's benchmark results.
 
-The frozen **DreamZero YAM1** policy leads. A Qwen-compatible vision service
+The **DreamZero YAM1** or **Dream-1 Robo-house** policy leads. A Qwen-compatible vision service
 screens completed windows in parallel; suspicious windows go to a confirming
 judge. The policy may lead supervision by at most two windows. Confirmed faults
 pause the policy at a packet boundary, plan from the **current** scene, execute
@@ -18,7 +18,7 @@ saved 10 Hz joint-step/velocity envelope, the adapter inserts intermediate
 samples while retaining every target in order. It never clips arm-joint targets;
 the gateway still validates the whole path and can reject unsafe motion.
 
-The page also offers the same **DreamZero policy alone** as a baseline. This is
+Each station also offers the same **policy alone** as a baseline. This is
 a selectable baseline, not a claim that uncontrolled live trials are comparable.
 Harness VLA/RPent remains a future comparison, not a second implemented mode.
 
@@ -35,7 +35,9 @@ export PYTHONPATH="$PWD/blupe"
 
 Without model configuration the page still shows live robot cameras, and Run
 returns a setup error before creating a queue entry. A configured host warms
-the supervisor and the exact pinned DreamZero checkpoint before queue admission.
+the supervisor before queue admission. DreamZero also warms its checkpoint
+before admission. Dream-1 starts its isolated SDK worker after lease grant,
+overlapping native robot preparation; only one SDK worker runs per instance.
 Visitors never receive either model credential or the robot session capability.
 
 The VLM URL is an administrator-controlled OpenAI-compatible `/v1` base serving
@@ -44,13 +46,21 @@ Qwen3.8-27B-FP8 (served name `qwen38`). The YAM prompts replace Franka-specific
 millimetre aperture assumptions with normalized grippers and visual evidence.
 Frozen simulator lessons are not blindly applied to physical YAM geometry.
 
-The pinned DreamZero checkpoint is for **YAM1 only**. Robo-house requires a
-compatible policy checkpoint and its own verified geometry; the app rejects
-that identity rather than relabelling a YAM1 checkpoint.
+The pinned DreamZero checkpoint remains **YAM1 only**. Robo-house uses the hosted
+`dreamlabs/dream-1-beta` API with its own saved controller geometry and calibration.
+Dream-1 is a hosted policy; its model weights are not supplied by this repository.
+The open-source Qwen supervisor runs separately on RunPod serverless GPUs. The
+AWS web backend sends images and measured state to it; neither model runs on the YAM.
+
+Dream-1 retains its live 5 Hz three-camera history during policy execution.
+Before handback after a Spotter repair, the adapter resets the SDK episode and
+discards prior camera history and action-smoothing anchors. It then requests a
+new prediction from fresh measured inputs. Stop closes the isolated SDK worker.
 
 ## Validation and hosting
 
 Hosted page: [Spotter on Blupe](https://spotter.54.209.185.15.sslip.io/).
+Robo-house: [Spotter + Dream-1](https://robohouse.spotter.54.209.185.15.sslip.io/).
 This dedicated virtual host uses the existing Blupe server, with its own backend
 and repository. `spotter.blupe.io` can replace it when a DNS record is available.
 
@@ -61,6 +71,9 @@ node --check blupe/static/site.js
 
 `blupe/deploy/spotter.service` installs a separate loopback-only service on the
 existing Blupe host. It does not modify or restart the main playground backend.
+The separate `spotter-robohouse.service` uses port8821 and
+`/etc/blupe-spotter-robohouse.env` (see `robohouse.env.example`).
+Set `SPOTTER_OTHER_STATION_ORIGIN` on each instance to link the station picker.
 Use a separate HTTPS virtual host and preserve Host/Origin and WebSocket headers.
 Keep one worker: visitor sessions, credentials and supervisor state are in memory.
 Do not put credentials in this repository or in browser settings.

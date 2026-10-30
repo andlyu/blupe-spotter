@@ -1,7 +1,9 @@
 """Separate Spotter web application built on the pinned Blupe runner."""
 import json
+import math
 import os
 from pathlib import Path
+from threading import BoundedSemaphore
 from urllib import request
 
 from . import ROOT
@@ -13,9 +15,13 @@ from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
 from .ui import runner_script
 from .motion import YAMMotionAdapter
+from .dream import SpotterDreamAdapter
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
 ASSETS = ROOT / 'blupe/static'
+ROBOHOUSE = 'robot-ba8413962083809c'
+STATIONS = {'yam-1': ('YAM1', 'dreamzero', 'DreamZero', MODELS['dreamzero']['model']),
+            ROBOHOUSE: ('Robo-house', 'dream', 'Dream-1', 'dreamlabs/dream-1-beta')}
 
 
 def secret_file(path):
@@ -31,22 +37,29 @@ class SpotterApp(HostedRunner):
         self.vlm_model = self.settings.get('vlm_model', 'qwen38')
         self.vlm_key_file = self.settings.get('vlm_key_file', '')
         self.max_lead = int(self.settings.get('max_lead', 2))
-        self.configured = bool(self.policy_endpoint and self.policy_key_file and self.vlm_endpoint)
         kwargs.setdefault('robot_id', 'yam-1')
-        if kwargs['robot_id'] != 'yam-1':
-            raise ValueError('The pinned DreamZero checkpoint is qualified for YAM1 only')
+        if kwargs['robot_id'] not in STATIONS:
+            raise ValueError('Spotter requires a configured YAM1 or Robo-house station')
+        self.station_name, self.base_provider, self.base_label, self.base_model = STATIONS[kwargs['robot_id']]
+        self.dream_credentials = self.settings.get('dream_credentials_file', '')
+        self.dream_python = self.settings.get('dream_python', '')
+        self.dream_workers = BoundedSemaphore(1)
+        base_configured = (bool(self.policy_endpoint and self.policy_key_file) if self.base_provider == 'dreamzero'
+                           else bool(self.dream_credentials and self.dream_python
+                                     and Path(self.dream_credentials).is_file() and Path(self.dream_python).is_file()))
+        self.configured = bool(base_configured and self.vlm_endpoint)
         super().__init__(**kwargs)
         # The separate host does not inherit the main playground's media proxy.
         # Use the runner's fresh per-camera transport rather than a missing composite.
         self.video_stream = None
-        self.extra_providers.update(spotter=self.make_spotter, dreamzero=self.make_base)
+        self.extra_providers.update({'spotter': self.make_spotter, self.base_provider: self.make_base})
         self.runpod_providers = {
-            'spotter': {'label': 'Spotter · DreamZero + ' + self.vlm_model,
-                        'model': 'spotter/' + MODELS['dreamzero']['model'],
+            'spotter': {'label': 'Spotter · ' + self.base_label + ' + ' + self.vlm_model,
+                        'model': 'spotter/' + self.base_model,
                         'default_run_duration_s': 300,
-                        'help': 'DreamZero leads. Spotter screens in parallel, confirms failures, repairs, then hands control back.'},
-            'dreamzero': {'label': 'DreamZero · policy alone', 'model': MODELS['dreamzero']['model'],
-                          'default_run_duration_s': 300, 'help': 'The same frozen YAM1 policy without Spotter supervision.'}}
+                        'help': self.base_label + ' leads. Spotter screens in parallel, confirms failures, repairs, then hands control back.'},
+            self.base_provider: {'label': self.base_label + ' · policy alone', 'model': self.base_model,
+                          'default_run_duration_s': 300, 'help': 'The same station policy without Spotter supervision.'}}
 
     def require_configured(self):
         if not self.configured:
@@ -54,13 +67,21 @@ class SpotterApp(HostedRunner):
 
     def make_base(self, model, directory):
         self.require_configured()
-        if model not in ('', MODELS['dreamzero']['model']):
-            raise RequestError(400, 'Unknown DreamZero checkpoint')
+        if model not in ('', self.base_model):
+            raise RequestError(400, 'Unknown station policy checkpoint')
+        if self.base_provider == 'dream':
+            limits = workspace_for_robot(self.robot_id)._safety()
+            step = .9 * math.degrees(min(limits['max_adjacent_delta_rad'], limits['max_joint_velocity_rad_s'] / 10))
+            return SpotterDreamAdapter(provider='dream', model=self.base_model,
+                credentials=self.dream_credentials, python=self.dream_python,
+                directory=Path(directory) / 'dream-sdk', camera_source=self.camera_source,
+                observation_source=lambda: self.monitor_api.get_robot_observation(self.robot_id),
+                robot_id=self.robot_id, gateway_max_step_deg=step, worker_pool=self.dream_workers)
         return YAMMotionAdapter(secret_file(self.policy_key_file), provider='dreamzero',
             endpoint=self.policy_endpoint, camera_source=self.camera_source, robot_id=self.robot_id)
 
     def make_spotter(self, model, directory):
-        if model not in ('', 'spotter/' + MODELS['dreamzero']['model']):
+        if model not in ('', 'spotter/' + self.base_model):
             raise RequestError(400, 'Unknown Spotter configuration')
         base = self.make_base('', directory)
         workspace = workspace_for_robot(self.robot_id)
@@ -76,24 +97,24 @@ class SpotterApp(HostedRunner):
                               preparation=prepare_geometry)
 
     def validate_launch(self, visitor, payload, paid):
-        if payload.get('provider') not in ('spotter', 'dreamzero'):
-            raise RequestError(400, 'Choose Spotter or the matching DreamZero baseline')
+        if payload.get('provider') not in ('spotter', self.base_provider):
+            raise RequestError(400, 'Choose Spotter or the matching station policy baseline')
         self.require_configured()
         return super().validate_launch(visitor, payload, paid)
 
     def page(self):
         page = super().page().decode()
-        page = page.replace('<title>BluPe · Run a policy</title>', '<title>Spotter on Blupe · Physical YAM demo</title>')
+        page = page.replace('<title>BluPe · Run a policy</title>', '<title>Spotter on Blupe · ' + self.station_name + '</title>')
         page = page.replace('<!-- application-head -->',
                             '<link rel="stylesheet" href="/spotter/site.css"><script src="/spotter/site.js" defer></script>')
         page = page.replace('<span class="consoleProduct">Playground</span>', '<span class="consoleProduct">Spotter</span>')
         start = page.index('  <p class="playgroundIntro">')
         end = page.index('</p>', start) + 4
-        page = page[:start] + '''  <p class="playgroundIntro">DreamZero moves. Spotter watches, repairs failures, and hands control back.
+        page = page[:start] + ('  <p class="playgroundIntro">' + self.base_label + ''' moves. Spotter watches, repairs failures, and hands control back.
 <a href="https://arxiv.org/abs/2609.36808" target="_blank" rel="noopener noreferrer">Paper</a> ·
 <a href="https://github.com/andlyu/blupe-spotter" target="_blank" rel="noopener noreferrer">Code</a> ·
 <a href="https://blupe.io/docs/robot-api/" target="_blank" rel="noopener noreferrer">Robot API</a></p>
-<p id="spotterReadiness" class="spotterReadiness" role="status">Checking Spotter configuration…</p>''' + page[end:]
+<p id="spotterReadiness" class="spotterReadiness" role="status">Checking Spotter configuration…</p>''') + page[end:]
         page = page.replace('Astra decision notes', 'Spotter decisions').replace('Astra’s next note will appear here.', 'Spotter’s observations and repair decisions will appear here.')
         page = page.replace('<script src="/static/camera-preview.js" async fetchpriority="high"></script>', '')
         page = page.replace('<script src="/synchronized/reader.js" defer></script>', '')
@@ -101,7 +122,8 @@ class SpotterApp(HostedRunner):
 
     async def session_extension(self, cookies, visitor):
         setup, headers = await super().session_extension(cookies, visitor)
-        return {**setup, 'spotter': {'configured': self.configured, 'base': 'DreamZero',
+        return {**setup, 'spotter': {'configured': self.configured, 'base': self.base_label,
+                                    'base_provider': self.base_provider, 'station': self.station_name,
                                     'supervisor': self.vlm_model, 'max_lead': self.max_lead}}, headers
 
     async def public_extension(self, scope, receive, send, headers):
@@ -124,14 +146,22 @@ def create_app():
     settings = {key: os.environ.get('SPOTTER_' + key.upper(), '') for key in
                 ('policy_endpoint', 'policy_key_file', 'vlm_endpoint', 'vlm_key_file')}
     settings.update(vlm_model=os.environ.get('SPOTTER_VLM_MODEL', 'qwen38'),
-                    max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')))
+                    max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')),
+                    dream_credentials_file=os.environ.get('SPOTTER_DREAM_CREDENTIALS_FILE', ''),
+                    dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''))
+    robot_id = os.environ.get('SPOTTER_ROBOT_ID', 'yam-1')
+    robots = [{'id': robot_id, 'name': STATIONS[robot_id][0], 'url': public_origin + '/'}]
+    other_origin = os.environ.get('SPOTTER_OTHER_STATION_ORIGIN', '')
+    if other_origin:
+        other_id = ROBOHOUSE if robot_id == 'yam-1' else 'yam-1'
+        robots.append({'id': other_id, 'name': STATIONS[other_id][0], 'url': other_origin.rstrip('/') + '/'})
     app = SpotterApp(settings=settings, public_origin=public_origin, session_api=api,
         camera_origin=camera_origin, development=development,
-        hardware_control=True, default_provider='spotter',
+        hardware_control=True, default_provider='spotter', robot_id=robot_id,
         # The shared runner permits durable station recordings only on localhost.
         # Public visitors keep the runner's private, ephemeral per-session storage.
         recording_root=os.environ.get('SPOTTER_RECORDINGS', '/tmp/spotter-recordings') if development else None,
-        robots=[{'id': 'yam-1', 'name': 'YAM1 · DreamZero', 'url': public_origin + '/'}],
+        robots=robots,
         share_conversation=False)
     app.camera_origin_value = camera_origin.rstrip('/')
     return app

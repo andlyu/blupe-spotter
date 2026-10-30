@@ -1,9 +1,11 @@
 # Spotter on Blupe
 
 [**Open the hosted demo**](https://spotter.54.209.185.15.sslip.io/)
+[**Robo-house · Spotter + Dream-1**](https://robohouse.spotter.54.209.185.15.sslip.io/)
 
-Spotter supervision on physical **YAM1** arms, in a separate application and
-repository. The frozen **DreamZero** policy leads; an open-source **Qwen3.8-27B-FP8**
+Spotter supervision on physical **YAM1 and Robo-house** arms, in a separate application and
+repository. **DreamZero** leads on YAM1; the hosted **Dream-1 beta** leads on
+Robo-house. An open-source **Qwen3.8-27B-FP8**
 supervisor screens execution, confirms failures, plans a repair, verifies it and
 hands control back. The same policy alone is available as a baseline.
 
