@@ -79,16 +79,19 @@ class SpotterAdapter:
         self._rounds = 0
         self._episode = None
         self._closed = False
+        self._prepared = False
 
     def public_config(self):
         return {'provider': self.provider_name, 'model': self.model,
                 'base_model': self.base.model, 'supervisor_model': self.supervisor.model,
                 'max_lead_windows': self.max_lead, 'interventions': self._interventions,
                 'policy_chunks': self._chunks, 'checked_through': self._checked,
+                'warmup': 'ready' if self._prepared else 'warming',
                 'phase': 'repair' if self._repair_context else 'policy'}
 
     def _event(self, phase, note, **details):
-        self.interaction_sink('model_progress', str(note)[:500], spotter_phase=phase,
+        self.interaction_sink('model_progress', 'Spotter ' + phase + ' · ' + str(note)[:500],
+                              progress_type='status', spotter_phase=phase,
                               policy_chunks=self._chunks, **details)
 
     def prepare_before_session(self, prompt):
@@ -100,6 +103,7 @@ class SpotterAdapter:
         if self.preparation: self.preparation()
         self.base.prepare_before_session(prompt)
         self._check_cancelled()
+        self._prepared = True
 
     def _check_cancelled(self):
         if self.cancelled() or self._closed:

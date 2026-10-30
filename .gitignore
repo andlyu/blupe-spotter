@@ -6,3 +6,7 @@ __pycache__/
 *.key
 recordings/
 work/
+.impeccable/
+qualification/
+supervisor-readiness.json
+RELEASE.json

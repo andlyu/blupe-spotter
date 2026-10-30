@@ -6,7 +6,6 @@ window.yamApplication = {
     picker.value = 'spotter';
     picker.dispatchEvent(new Event('change'));
     document.title = 'Spotter on Blupe · Physical YAM demo';
-    document.getElementById('runnerName').value ||= 'Andrew';
     const readiness = document.getElementById('spotterReadiness');
     readiness.textContent = session.spotter.configured
       ? `DreamZero + ${session.spotter.supervisor} · Models prepare before entering the robot queue. Select policy alone for a baseline.`

@@ -6,12 +6,13 @@ from urllib import request
 
 from . import ROOT
 from playground import HostedRunner, RequestError
-from remote_yam.cameras import CameraFrameSource
 from remote_yam.controller_workspace import workspace_for_robot
 from remote_yam.robocurve_trajectory import RoboCurveTrajectory
-from remote_yam.yam_runpod_policy import YAMRunpodAdapter, MODELS
+from remote_yam.yam_runpod_policy import MODELS
 from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
+from .ui import runner_script
+from .motion import YAMMotionAdapter
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
 ASSETS = ROOT / 'blupe/static'
@@ -55,7 +56,7 @@ class SpotterApp(HostedRunner):
         self.require_configured()
         if model not in ('', MODELS['dreamzero']['model']):
             raise RequestError(400, 'Unknown DreamZero checkpoint')
-        return YAMRunpodAdapter(secret_file(self.policy_key_file), provider='dreamzero',
+        return YAMMotionAdapter(secret_file(self.policy_key_file), provider='dreamzero',
             endpoint=self.policy_endpoint, camera_source=self.camera_source, robot_id=self.robot_id)
 
     def make_spotter(self, model, directory):
@@ -105,6 +106,9 @@ class SpotterApp(HostedRunner):
 
     async def public_extension(self, scope, receive, send, headers):
         name = scope.get('path', '')
+        if scope.get('method') == 'GET' and name == '/static/hosted.js':
+            await self.respond(send, 200, runner_script(), 'text/javascript; charset=utf-8')
+            return True
         if scope.get('method') == 'GET' and name in ('/spotter/site.js', '/spotter/site.css'):
             path = ASSETS / name.rsplit('/', 1)[1]
             await self.respond(send, 200, path.read_bytes(), 'text/javascript' if path.suffix == '.js' else 'text/css')

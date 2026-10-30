@@ -13,6 +13,11 @@ pause the policy at a packet boundary, plan from the **current** scene, execute
 YAM primitives, verify outcomes and return control. Supervisor failure stops
 new commands rather than silently turning the run into policy-only execution.
 
+Both modes use the same YAM transport. If a frozen-policy segment exceeds the
+saved 10 Hz joint-step/velocity envelope, the adapter inserts intermediate
+samples while retaining every target in order. It never clips arm-joint targets;
+the gateway still validates the whole path and can reject unsafe motion.
+
 The page also offers the same **DreamZero policy alone** as a baseline. This is
 a selectable baseline, not a claim that uncontrolled live trials are comparable.
 Harness VLA/RPent remains a future comparison, not a second implemented mode.
