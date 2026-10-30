@@ -21,6 +21,7 @@ from .vlm import VisionSupervisor
 from .ui import runner_script
 from .motion import YAMMotionAdapter
 from .dream import SpotterDreamAdapter
+from .history import ReceiptHistory
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
 ASSETS = ROOT / 'blupe/static'
@@ -58,6 +59,7 @@ class SpotterApp(HostedRunner):
                               and secret_file(self.vlm_key_file)))
         self.configured = bool(base_configured and vlm_configured)
         super().__init__(**kwargs)
+        self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id)
         self.dream_resident = None
         self.dream_preparation_task = None
         self.dream_preparation_failed = False
@@ -123,6 +125,22 @@ class SpotterApp(HostedRunner):
             raise RequestError(503, 'Spotter model services need configuration on the host. Live cameras remain available.')
         if not self.runtime_configured():
             raise RequestError(503, 'Dream solver is preparing or unavailable. Live cameras remain available; try again when the page reports ready.')
+
+    def launch(self, visitor, payload, **kwargs):
+        result = super().launch(visitor, payload, **kwargs)
+        visitor.spotter_attempt_id = result.get('attempt_id')
+        return result
+
+    def remember_runner(self, visitor):
+        # Prequeue preparation has no session ID at launch return. Associate
+        # only the same visitor-owned attempt once its session exists.
+        with visitor.lock:
+            state = visitor.controller.status()
+            attempt = getattr(visitor, 'spotter_attempt_id', None)
+            if (attempt and attempt == state.get('attempt_id') and state.get('session_id')
+                    and not visitor.runner_session_id):
+                visitor.runner_session_id = state['session_id']
+        return super().remember_runner(visitor)
 
     def make_base(self, model, directory):
         self.require_configured()

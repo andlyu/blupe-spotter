@@ -5,6 +5,7 @@ from . import RUNNER
 def runner_script():
     script = (RUNNER / 'static/hosted.js').read_text()
     edits = {
+        'Preparing replay… · View run': 'Video not published · View run details',
         "const entryModel = playgroundEntryModel(location.search, $('provider').options, session);":
             "const entryModel = session.spotter && !new URLSearchParams(location.search).has('model') ? null : playgroundEntryModel(location.search, $('provider').options, session);",
         "event.kind === 'model_response' && astraStreamNote(event)":
