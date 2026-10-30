@@ -126,6 +126,14 @@ discards prior camera history and action-smoothing anchors. It then requests a
 new prediction from fresh measured inputs. Stop releases the exclusive visitor
 handle; the resident pool drains and resets its episode before reuse.
 
+Run receipts persist in the runner’s public metadata database before a video
+is published. Spotter associates the eventual robot session only with the same
+accepted visitor attempt, then merges recent local receipts into history. The
+archive’s published row replaces that receipt automatically, without duplication.
+A missing archive video is labeled “Video not published”; a run receipt and motion
+totals do not establish that a replay exists. “Your runs” is limited to the current
+server session; retained public receipts remain in “All runs” after a restart.
+
 ## Validation and hosting
 
 Hosted page: [Spotter on Blupe](https://spotter.54.209.185.15.sslip.io/).
