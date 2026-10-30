@@ -39,3 +39,38 @@ the operator's task outputs; they are not bundled into the public web assets.
 Robot-recording publication is asynchronous and is separate from the local
 model journal. The hosted page offers its normal replay link when a recording
 is available.
+
+## Robo-house with Dream-1
+
+The separate Robo-house page ran **hosted Dream-1 beta + Qwen Spotter** on robot
+`robot-ba8413962083809c`, using its original encoder coordinates and corrected
+repair geometry. Trial `run_cc136d422fe240ec985b83d7cc6d8cb6` requested
+“Pick up the small red cube and place it on the dark round tray.”
+
+From **19:00:11–19:03:04 UTC**, it completed **5 packets / 128 settled waypoints**:
+four Dream-1 chunks and one Spotter Cartesian repair. Screen, confirming judge,
+repair, handback and verification all executed. Qwen identified the policy
+approaching the large red block instead of the small red cube. After repair,
+the SDK reset completed in **0.20s**, and a fresh Dream-1 prediction executed.
+This exercised the stateful-policy handoff on physical hardware.
+
+**The task did not succeed.** The small red cube remained unplaced. Verification
+reported that the arm was still over the wrong object. Further repair plans
+did not produce a verified correction, and the run stopped at the configured
+three-plan budget. The native automatic queue subsequently parked both arms
+and verified torque off. This is an operational integration, not evidence that
+Dream-1 outperforms DreamZero or a measured success rate.
+
+Before the trial, live joint limits and arm-calibration offsets matched the
+saved Robo-house profile. Its saved Cartesian repair envelope is a conservative
+subset of the live controller's wider crossover envelope; the integration did
+not widen its limits. The gateway checked every dispatched packet.
+
+The combined integration, Dream-policy and controller-workspace suites passed
+**121 tests in 23.20s**. Initial Dream SDK configuration took **81.50s** after
+lease grant; measured inference calls took **0.70–4.47s**. Qwen also required
+several minutes of prequeue model reload. These startup costs are separate
+from action execution and depend on cache/allocation state.
+
+The sanitized Robo-house journal and SDK stage timings are retained in the
+operator's task outputs. Public replay publication was not used as evidence.

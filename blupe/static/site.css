@@ -4,4 +4,9 @@
 .cameras[data-layout="multi"] figure[data-camera-role="top"] { grid-column: 1 / -1; grid-row: 1; }
 .cameras[data-layout="multi"] figure[data-camera-role="left"] { grid-column: 1; grid-row: 2; }
 .cameras[data-layout="multi"] figure[data-camera-role="right"] { grid-column: 2; grid-row: 2; }
+/* The runner sizes cameras from the footer's occupied height. Keep a long
+   terminal error from shrinking the camera and recursively narrowing the footer. */
+@media (min-width: 741px) {
+  .playgroundConsole .cameraFooter { max-block-size: 180px; overflow-y: auto; overscroll-behavior: contain; }
+}
 @media (max-width: 640px) { .spotterReadiness { font-size: .8125rem; margin-bottom: .75rem; } }
