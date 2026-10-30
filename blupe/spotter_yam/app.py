@@ -124,6 +124,7 @@ class SpotterApp(HostedRunner):
         setup, headers = await super().session_extension(cookies, visitor)
         return {**setup, 'spotter': {'configured': self.configured, 'base': self.base_label,
                                     'base_provider': self.base_provider, 'station': self.station_name,
+                                    'stations': self.robots,
                                     'supervisor': self.vlm_model, 'max_lead': self.max_lead}}, headers
 
     async def public_extension(self, scope, receive, send, headers):

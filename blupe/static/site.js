@@ -3,6 +3,15 @@ window.yamApplication = {
   async sessionReady(session) {
     const picker = document.getElementById('provider');
     const setup = session.spotter;
+    document.getElementById('robotSelector').addEventListener('change', event => {
+      const station = setup.stations.find(item => item.id === event.target.value);
+      if (station && station.id !== session.robot_id) {
+        // These stations have separate backends. Override the shared fleet
+        // picker's same-origin query routing before its bubble listener runs.
+        event.stopImmediatePropagation();
+        window.location.assign(station.url);
+      }
+    }, {capture: true});
     picker.replaceChildren(...Array.from(picker.options).filter(option => ['spotter', setup.base_provider].includes(option.value)));
     picker.value = 'spotter';
     picker.dispatchEvent(new Event('change'));
