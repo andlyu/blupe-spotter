@@ -151,3 +151,93 @@ def test_managed_supervisor_requires_a_nonempty_key_and_reaches_station_factory(
                     adapter.close_transport()
         finally:
             shutil.rmtree(app.root)
+
+
+@pytest.fixture
+def resident_app(tmp_path, monkeypatch):
+    import shutil
+    from spotter_yam import app as app_module
+
+    class PreparedPool:
+        ready = False
+        closed = False
+        failure = False
+        def __init__(self, *args): pass
+        def status(self):
+            return {'ready': self.ready, 'busy': False, 'preparing': False,
+                    'recovery_attempts': 0, 'recovery_exhausted': False}
+        def prime(self, **kwargs):
+            if self.failure:
+                raise RuntimeError('private provider detail')
+            self.ready = True
+        def factory(self, *args):
+            pytest.fail('Factory must not be invoked before a robot lease')
+        def close(self): self.closed = True
+
+    monkeypatch.setattr(app_module, 'DreamWorkerPool', PreparedPool)
+    credentials, python = tmp_path/'credentials', tmp_path/'python'
+    credentials.touch(); python.touch()
+    app = SpotterApp(settings={'dream_credentials_file': str(credentials),
+        'dream_python': str(python), 'dream_resident_dir': str(tmp_path/'resident'),
+        'vlm_endpoint': 'https://vlm.example.com/v1'}, robot_id=ROBOHOUSE,
+        public_origin='http://127.0.0.1:8821', development=True,
+        session_api='', camera_origin='http://127.0.0.1:8089')
+    try:
+        yield app
+    finally:
+        app.dream_resident.close()
+        shutil.rmtree(app.root, ignore_errors=True)
+
+
+def test_resident_preparation_gates_launch_and_supplies_exclusive_factory(resident_app, tmp_path):
+    import asyncio
+    app = resident_app
+    assert app.configured and not app.runtime_configured()
+    with pytest.raises(Exception, match='Dream solver is preparing or unavailable'):
+        app.make_base('', tmp_path)
+    asyncio.run(app.prepare_dream())
+    assert app.runtime_configured()
+    base = app.make_base('', tmp_path)
+    try:
+        assert base.worker_factory == app.dream_resident.factory
+        assert base.worker_pool is app.dream_workers  # Still waits for lease.
+    finally:
+        base.close_transport()
+    app.dream_resident.ready = False
+    with pytest.raises(Exception, match='Dream solver is preparing or unavailable'):
+        app.validate_launch(None, {'provider': 'spotter'}, False)
+
+
+def test_resident_preparation_failure_stays_unavailable_without_private_errors(resident_app, caplog):
+    import asyncio
+    app = resident_app
+    app.dream_resident.failure = True
+    asyncio.run(app.prepare_dream())
+    assert not app.runtime_configured()
+    assert app.dream_readiness()['preparation_failed']
+    assert 'private provider detail' not in caplog.text
+
+
+def test_resident_lifespan_prepares_in_background_and_closes_pool(resident_app, monkeypatch):
+    import asyncio
+    app = resident_app
+
+    async def exercise():
+        events = asyncio.Queue()
+        sent = []
+        async def maintenance(): await asyncio.Event().wait()
+        monkeypatch.setattr(app, 'maintenance', maintenance)
+        async def send(event): sent.append(event['type'])
+        runner = asyncio.create_task(app({'type': 'lifespan'}, events.get, send))
+        await events.put({'type': 'lifespan.startup'})
+        for _ in range(100):
+            if app.runtime_configured(): break
+            await asyncio.sleep(.01)
+        assert app.runtime_configured()
+        assert 'lifespan.startup.complete' in sent
+        await events.put({'type': 'lifespan.shutdown'})
+        await asyncio.wait_for(runner, 2)
+        assert app.dream_resident.closed
+        assert sent[-1] == 'lifespan.shutdown.complete'
+
+    asyncio.run(exercise())

@@ -36,9 +36,41 @@ export PYTHONPATH="$PWD/blupe"
 Without model configuration the page still shows live robot cameras, and Run
 returns a setup error before creating a queue entry. A configured host warms
 the supervisor before queue admission. DreamZero also warms its checkpoint
-before admission. Dream-1 starts its isolated SDK worker after lease grant,
-overlapping native robot preparation; only one SDK worker runs per instance.
+before admission. Dream-1 visitor handles activate after lease grant,
+overlapping native robot preparation; only one visitor owns its SDK worker.
 Visitors never receive either model credential or the robot session capability.
+
+Dream's SDK also prepares a local inverse-kinematics solver before its first
+prediction. The default isolated worker uses a new private JAX cache per visitor,
+which can repeat expensive compilation. The hosted Robo-house recipe therefore
+sets a private, service-owned `JAX_COMPILATION_CACHE_DIR`. A measured fresh process
+still took about88seconds to configure after a successful cold prime; disk caching
+alone did not establish fast startup. The recipe also sets
+`SPOTTER_DREAM_RESIDENT_DIR` to retain one fully prepared process. At service start,
+the pinned pool prepares both checkpoint policies and both trajectory-kernel
+structures in the background, without a robot lease or model prediction. The
+page reports preparation status; launch stays unavailable until the pool is ready.
+
+The pool lends an exclusive handle after lease grant. It drains in-flight replies
+and resets SDK episodes before another visitor can use the process. Failed cleanup
+destroys the process; bounded recovery keeps launch unavailable until preparation
+succeeds. Credential changes invalidate readiness. Shutdown closes the pool after
+visitor cleanup. The solver remains compiled, while camera history, model sessions
+and action blending are reset. Solver objectives, limits and branch selection are
+unchanged. Persistent directories must remain private and service-owned.
+
+For a separate no-motion disk-cache diagnostic, use the same trusted SDK, cache
+directory and `YAM_DREAM_BLOCKWISE_IK=1` environment as the service:
+
+```sh
+PYTHONPATH=blupe python3 -m spotter_yam.prepare_dream
+```
+
+This command compiles both pinned trajectory-kernel structures from synthetic
+rest poses. It does not read robot observations, request model actions, lease a
+robot or send motion. Repeat it in a fresh process to measure cache reuse before
+an API-backed physical run. It preserves the SDK's solver configuration, limits
+and runtime branch selection; caching does not establish task success.
 
 The VLM URL is an administrator-controlled OpenAI-compatible base serving
 chat completions. The self-hosted setting uses
@@ -88,7 +120,8 @@ supervision fails during execution.
 Dream-1 retains its live 5 Hz three-camera history during policy execution.
 Before handback after a Spotter repair, the adapter resets the SDK episode and
 discards prior camera history and action-smoothing anchors. It then requests a
-new prediction from fresh measured inputs. Stop closes the isolated SDK worker.
+new prediction from fresh measured inputs. Stop releases the exclusive visitor
+handle; the resident pool drains and resets its episode before reuse.
 
 ## Validation and hosting
 

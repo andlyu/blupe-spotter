@@ -17,9 +17,26 @@ window.yamApplication = {
     picker.dispatchEvent(new Event('change'));
     document.title = `Spotter on Blupe · ${setup.station}`;
     const readiness = document.getElementById('spotterReadiness');
-    readiness.textContent = setup.configured
-      ? `${setup.base} + ${setup.supervisor} · ${setup.base_provider === 'dream' ? 'Spotter prepares before the queue; Dream-1 connects when the robot is reserved.' : 'Models prepare before entering the robot queue.'} Select policy alone for a baseline.`
-      : 'Model services are being configured. You can watch the live YAM cameras; running Spotter is unavailable until setup completes.';
+    function showReadiness(state) {
+      const dream = state.dream_runtime;
+      readiness.textContent = state.configured
+        ? `${setup.base} + ${setup.supervisor} · ${dream ? 'Dream solver is ready; each run starts a clean model episode.' : 'Models prepare before execution.'} Select policy alone for a baseline.`
+        : dream?.preparing
+          ? 'Preparing the Dream solver. Cameras are live; Run becomes available when preparation finishes.'
+          : 'Model services are unavailable. Cameras remain live; Run is unavailable until preparation succeeds.';
+    }
+    showReadiness(setup);
+    if (setup.dream_runtime) {
+      setInterval(async () => {
+        try {
+          const response = await fetch('/spotter/readiness', {cache: 'no-store'});
+          if (!response.ok) throw new Error('Readiness unavailable');
+          showReadiness(await response.json());
+        } catch {
+          readiness.textContent = 'Model readiness is unavailable. Reconnecting…';
+        }
+      }, 3000);
+    }
     document.getElementById('openCodexInstructions').hidden = true;
     for (const id of ['runAstra', 'runClaude', 'runGroot']) document.getElementById(id).hidden = true;
   }

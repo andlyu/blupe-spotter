@@ -1,9 +1,13 @@
 """Separate Spotter web application built on the pinned Blupe runner."""
+import asyncio
+from contextlib import suppress
 import json
+import logging
 import math
 import os
 from pathlib import Path
 from threading import BoundedSemaphore
+import time
 from urllib import request
 
 from . import ROOT
@@ -11,6 +15,7 @@ from playground import HostedRunner, RequestError
 from remote_yam.controller_workspace import workspace_for_robot
 from remote_yam.robocurve_trajectory import RoboCurveTrajectory
 from remote_yam.yam_runpod_policy import MODELS
+from remote_yam.dream_worker_pool import DreamWorkerPool
 from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
 from .ui import runner_script
@@ -53,6 +58,12 @@ class SpotterApp(HostedRunner):
                               and secret_file(self.vlm_key_file)))
         self.configured = bool(base_configured and vlm_configured)
         super().__init__(**kwargs)
+        self.dream_resident = None
+        self.dream_preparation_task = None
+        self.dream_preparation_failed = False
+        resident_dir = self.settings.get('dream_resident_dir', '')
+        if self.base_provider == 'dream' and base_configured and resident_dir:
+            self.dream_resident = DreamWorkerPool(self.dream_python, self.dream_credentials, resident_dir)
         # The separate host does not inherit the main playground's media proxy.
         # Use the runner's fresh per-camera transport rather than a missing composite.
         self.video_stream = None
@@ -65,9 +76,53 @@ class SpotterApp(HostedRunner):
             self.base_provider: {'label': self.base_label + ' · policy alone', 'model': self.base_model,
                           'default_run_duration_s': 300, 'help': 'The same station policy without Spotter supervision.'}}
 
+    def dream_readiness(self):
+        if self.dream_resident is None:
+            return None
+        state = self.dream_resident.status()
+        return {**state, 'preparing': state['preparing'] or bool(
+            self.dream_preparation_task and not self.dream_preparation_task.done()),
+            'preparation_failed': self.dream_preparation_failed}
+
+    def runtime_configured(self):
+        state = self.dream_readiness()
+        return self.configured and (state is None or state['ready'])
+
+    async def prepare_dream(self):
+        started = time.perf_counter()
+        try:
+            await asyncio.to_thread(self.dream_resident.prime, timeout=360)
+            logging.getLogger(__name__).info('Dream solver prepared in %.3fs', time.perf_counter() - started)
+        except Exception as error:
+            self.dream_preparation_failed = True
+            logging.getLogger(__name__).warning('Dream preparation failed (%s)', type(error).__name__)
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'lifespan' or self.dream_resident is None:
+            return await super().__call__(scope, receive, send)
+
+        async def lifecycle_receive():
+            event = await receive()
+            if event['type'] == 'lifespan.startup' and self.dream_preparation_task is None:
+                self.dream_preparation_task = asyncio.create_task(self.prepare_dream())
+            return event
+
+        try:
+            await super().__call__(scope, lifecycle_receive, send)
+        finally:
+            # The parent drains visitors first. Pool cleanup also interrupts an
+            # unfinished prime; cancelled inference replies are never lent out.
+            await asyncio.to_thread(self.dream_resident.close)
+            if self.dream_preparation_task:
+                self.dream_preparation_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self.dream_preparation_task
+
     def require_configured(self):
         if not self.configured:
             raise RequestError(503, 'Spotter model services need configuration on the host. Live cameras remain available.')
+        if not self.runtime_configured():
+            raise RequestError(503, 'Dream solver is preparing or unavailable. Live cameras remain available; try again when the page reports ready.')
 
     def make_base(self, model, directory):
         self.require_configured()
@@ -80,7 +135,8 @@ class SpotterApp(HostedRunner):
                 credentials=self.dream_credentials, python=self.dream_python,
                 directory=Path(directory) / 'dream-sdk', camera_source=self.camera_source,
                 observation_source=lambda: self.monitor_api.get_robot_observation(self.robot_id),
-                robot_id=self.robot_id, gateway_max_step_deg=step, worker_pool=self.dream_workers)
+                robot_id=self.robot_id, gateway_max_step_deg=step, worker_pool=self.dream_workers,
+                **({'worker_factory': self.dream_resident.factory} if self.dream_resident else {}))
         return YAMMotionAdapter(secret_file(self.policy_key_file), provider='dreamzero',
             endpoint=self.policy_endpoint, camera_source=self.camera_source, robot_id=self.robot_id)
 
@@ -127,13 +183,18 @@ class SpotterApp(HostedRunner):
 
     async def session_extension(self, cookies, visitor):
         setup, headers = await super().session_extension(cookies, visitor)
-        return {**setup, 'spotter': {'configured': self.configured, 'base': self.base_label,
+        return {**setup, 'spotter': {'configured': self.runtime_configured(), 'base': self.base_label,
                                     'base_provider': self.base_provider, 'station': self.station_name,
                                     'stations': self.robots,
-                                    'supervisor': self.vlm_model, 'max_lead': self.max_lead}}, headers
+                                    'supervisor': self.vlm_model, 'max_lead': self.max_lead,
+                                    'dream_runtime': self.dream_readiness()}}, headers
 
     async def public_extension(self, scope, receive, send, headers):
         name = scope.get('path', '')
+        if scope.get('method') == 'GET' and name == '/spotter/readiness':
+            await self.json(send, 200, {'configured': self.runtime_configured(),
+                                      'dream_runtime': self.dream_readiness()})
+            return True
         if scope.get('method') == 'GET' and name == '/static/hosted.js':
             await self.respond(send, 200, runner_script(), 'text/javascript; charset=utf-8')
             return True
@@ -155,7 +216,8 @@ def create_app():
                     vlm_api_style=os.environ.get('SPOTTER_VLM_API_STYLE', 'vllm'),
                     max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')),
                     dream_credentials_file=os.environ.get('SPOTTER_DREAM_CREDENTIALS_FILE', ''),
-                    dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''))
+                    dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''),
+                    dream_resident_dir=os.environ.get('SPOTTER_DREAM_RESIDENT_DIR', ''))
     robot_id = os.environ.get('SPOTTER_ROBOT_ID', 'yam-1')
     robots = [{'id': robot_id, 'name': STATIONS[robot_id][0], 'url': public_origin + '/'}]
     other_origin = os.environ.get('SPOTTER_OTHER_STATION_ORIGIN', '')
