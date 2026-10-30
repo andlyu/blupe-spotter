@@ -17,7 +17,7 @@ from remote_yam.controller_workspace import workspace_for_robot
 from remote_yam.robocurve_trajectory import RoboCurveTrajectory
 from remote_yam.yam_runpod_policy import MODELS
 from remote_yam.dream_worker_pool import DreamWorkerPool
-from remote_yam.quick_replays import QuickReplays
+from .live_replays import LiveReplays, ReplayStore
 from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
 from .ui import runner_script
@@ -61,8 +61,10 @@ class SpotterApp(HostedRunner):
                               and secret_file(self.vlm_key_file)))
         self.configured = bool(base_configured and vlm_configured)
         super().__init__(**kwargs)
-        self.local_replays = QuickReplays(self.settings.get('replay_root'))
+        self.local_replays = ReplayStore(self.settings.get('replay_root'))
         self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id, self.local_replays)
+        self.replay_capture = (LiveReplays(self.local_replays.root, kwargs.get('camera_origin', API), self.robot_id)
+                               if self.local_replays.root and self.robot_id == ROBOHOUSE else None)
         self.dream_resident = None
         self.dream_preparation_task = None
         self.dream_preparation_failed = False
@@ -117,6 +119,8 @@ class SpotterApp(HostedRunner):
         finally:
             # The parent drains visitors first. Pool cleanup also interrupts an
             # unfinished prime; cancelled inference replies are never lent out.
+            if self.replay_capture:
+                await asyncio.to_thread(self.replay_capture.close)
             await asyncio.to_thread(self.dream_resident.close)
             if self.dream_preparation_task:
                 self.dream_preparation_task.cancel()
@@ -143,7 +147,14 @@ class SpotterApp(HostedRunner):
             if (attempt and attempt == state.get('attempt_id') and state.get('session_id')
                     and not visitor.runner_session_id):
                 visitor.runner_session_id = state['session_id']
-        return super().remember_runner(visitor)
+        result = super().remember_runner(visitor)
+        capture = getattr(self, 'replay_capture', None)
+        if capture:
+            # Capture only a visitor-owned running episode. The background job
+            # watches this controller's read-only status even after the tab closes.
+            capture.observe(state, visitor.runner_session_id, visitor.runner_task,
+                            visitor.runner_name, visitor.controller.status)
+        return result
 
     def make_base(self, model, directory):
         self.require_configured()

@@ -139,6 +139,23 @@ byte-range seeking, without waiting for the public archive. Direct replay links
 read that cache first. The local metadata never replaces a recorded model with
 an unknown model or changes the runner's failure result.
 
+With that cache enabled, Robo-house also records the three public camera APIs
+during each visitor-owned running episode. It encodes while the method runs and
+atomically publishes the MP4 on termination, independently of native recording
+transfer. These videos are explicitly labeled **2 fps camera API recordings**,
+retain pauses at nominal live speed, and retain timestamped JPEG provenance.
+Camera outages appear as missing frames. Capture starts only for an owned running
+episode, rejects pre-run/future images, and follows that same controller's status
+even if the tab closes. It requests no robot lease or motion. A separate native
+recording remains the higher-rate source; historical recovery still requires its
+original footage to have reached the web host.
+
+Use the shared [integration completion checklist](COMPLETION-CHECKLIST.md) for
+acceptance. It requires a deployed-website physical trial and replay of that
+just-completed run; recovered older clips alone cannot pass that requirement.
+The checklist records remaining gaps and does not declare the whole integration
+complete while any requirement is unverified.
+
 `deploy/spotter-replays.service` and its timer recover only Robo-house episodes
 listed in Spotter's durable run receipts. They read finalized footage already in
 the web host's publisher staging directory; they never contact the robot, reserve

@@ -5,6 +5,10 @@ from . import RUNNER
 def runner_script():
     script = (RUNNER / 'static/hosted.js').read_text()
     edits = {
+        'player.play().catch(() => {});':
+            'player.muted = true; player.play().catch(() => {});',
+        '`${playbackSource(run, false).speed}× speed · idle pauses removed`':
+            '`${playbackSource(run, false).speed}× speed · ${run.idle_removed_s === 0 ? "pauses retained" : "idle pauses removed"}${run.capture_fps ? " · " + run.capture_fps + " fps camera API recording" : ""}`',
         'Preparing replay… · View run': 'Video not published · View run details',
         "const entryModel = playgroundEntryModel(location.search, $('provider').options, session);":
             "const entryModel = session.spotter && !new URLSearchParams(location.search).has('model') ? null : playgroundEntryModel(location.search, $('provider').options, session);",
