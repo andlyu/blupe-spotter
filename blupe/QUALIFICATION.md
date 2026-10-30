@@ -74,3 +74,61 @@ from action execution and depend on cache/allocation state.
 
 The sanitized Robo-house journal and SDK stage timings are retained in the
 operator's task outputs. Public replay publication was not used as evidence.
+
+
+## Managed Qwen and resident Dream startup, October 30
+
+Robo-house switched its supervisor to OpenRouter Qwen3.8-27B. An authenticated
+readiness completion took **0.331s**; a live three-camera JSON screen took
+**0.870s**. These establish API access and camera-input compatibility. Provider
+quantization/revision can differ from the earlier pinned RunPod FP8 deployment.
+YAM1's model configuration and service were not changed.
+
+The first managed-supervisor cube-into-cup attempt timed out after **120.530s**
+during local Dream SDK policy configuration. It sent **zero packets and zero
+waypoints**, and made no Dream prediction. This was a startup failure, not an
+observed manipulation attempt. The robot subsequently reported DISABLED.
+
+A no-motion cold preparation completed in **271.877s**, including **83.628s**
+for SDK configuration and **184.839s** for both trajectory-kernel structures.
+A fresh process with the saved disk cache still took **87.922s** to configure;
+full preparation reached the explicit 180s diagnostic limit. No verified
+four-second fresh startup was established.
+
+The hosted recipe now retains the pinned prepared DreamWorkerPool. Preparation
+runs before launch readiness, outside any robot lease; visitor handles activate
+only after lease grant. The pool drains in-flight replies and resets SDK model
+sessions, camera windows and blending between visitors. Failed cleanup destroys
+the worker. Solver objectives and gateway limits are unchanged. The combined
+Spotter and pool lifecycle suites passed **55 tests and 2 subtests in 40.03s**.
+Live resident preparation and the physical retry are recorded separately below.
+
+
+The live deployment completed its resident preparation in **278.364s** from SDK
+import start to the final checkpoint's full-preparation end. In Andrew's next
+API-backed run, visitor configuration took **0.001017s**, the first Dream action
+chunk was ready **7.359s** after run start, and **24 waypoints** were confirmed
+settled at **11.001s**. This measures one prepared run, not a universal latency
+bound. Restarting the service still requires full preparation.
+
+Trial `run_e46cb31411cd445fb9ff8e7d909e4a58` / episode
+`ep_2e08e138f81f4ac0`, named **Andrew**, requested “Pick up the orange cube and
+put it into the cup.” It ran from **21:15:58–21:17:30 UTC** with a two-minute
+limit, ending after **91.944s** at the existing three-plan repair budget. The API
+recorded **11 completed packets / 221 confirmed waypoints** and **26.723s** of
+robot execution. Three Dream chunks, Spotter screening/judgment, Cartesian
+repairs, verification and a causal policy handback ran through the site/API.
+The reset before the handback discarded the preceding action/image history.
+
+**The task failed.** The orange object remained on the table and the cup was
+empty. Spotter's repair descriptions also contradicted its preceding verification
+about whether the object was grasped; those descriptions are model claims, not
+proof of a grasp. The final verification rejected placement and the configured
+budget ended the attempt. No success label was assigned. This verifies managed
+supervisor integration and removal of per-visitor solver preparation, not a
+successful pick-and-place or an advantage over another VLA.
+
+Afterward the robot API reported **DISABLED**, both arms at their parked encoder
+positions, and no runner safety error. The resident solver's post-run readiness
+and episode-reset receipt are retained with the owner API snapshots in the
+operator's outputs. Replay publication is not required by this evidence.

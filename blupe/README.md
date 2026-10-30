@@ -87,9 +87,9 @@ neither model runs on the YAM.
 
 ### Managed Qwen through OpenRouter
 
-OpenRouter support is implemented; switching the live hosts requires a funded
-server-owned key and live validation. `deploy/robohouse.env.example` contains
-the complete target configuration:
+Robo-house uses OpenRouter with a funded server-owned key; YAM1 retains its
+self-hosted RunPod supervisor. `deploy/robohouse.env.example` contains the
+Robo-house configuration:
 
 ```sh
 SPOTTER_VLM_API_STYLE=openrouter
@@ -112,6 +112,9 @@ credit and API failures end preparation with a sanitized error; they do not
 enter the self-hosted twenty-minute GPU-warmup retry loop. A readiness check
 does not establish image understanding or physical task success: validate a
 three-camera inference and a bounded real run before qualifying the migration.
+The live Robo-house check completed11packets/221confirmed waypoints after the
+resident startup fix, including Spotter repair and policy handback. The orange
+cube was not placed in the cup; see [qualification evidence](QUALIFICATION.md).
 
 For self-hosting, keep `SPOTTER_VLM_API_STYLE=vllm` (the default); its model
 discovery/warmup behavior remains available. Both providers fail closed if
