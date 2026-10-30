@@ -45,6 +45,10 @@ that identity rather than relabelling a YAM1 checkpoint.
 
 ## Validation and hosting
 
+Hosted page: [Spotter on Blupe](https://spotter.54.209.185.15.sslip.io/).
+This dedicated virtual host uses the existing Blupe server, with its own backend
+and repository. `spotter.blupe.io` can replace it when a DNS record is available.
+
 ```sh
 PYTHONPATH=blupe python3 -m pytest blupe/tests -q
 node --check blupe/static/site.js
@@ -55,6 +59,14 @@ existing Blupe host. It does not modify or restart the main playground backend.
 Use a separate HTTPS virtual host and preserve Host/Origin and WebSocket headers.
 Keep one worker: visitor sessions, credentials and supervisor state are in memory.
 Do not put credentials in this repository or in browser settings.
+Public hosting keeps the shared runner's private, ephemeral visitor recordings;
+`SPOTTER_RECORDINGS` applies only to localhost station hosting.
+
+The inference configuration pins the Qwen model revision and official vLLM image.
+That image uses its native `vllm serve` command and requires CUDA 13.0 or newer.
+Both model endpoints allow at most one worker each and scale to zero after five
+idle minutes. Initial startup includes model loading; preparation precedes robot
+queue admission.
 
 Physical qualification must record an actual model-backed session, executed
 waypoints, settled feedback and video. Passing unit tests, a live camera, a

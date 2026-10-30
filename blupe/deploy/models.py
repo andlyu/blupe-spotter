@@ -29,15 +29,16 @@ def api(path, body=None, method=None):
 
 def config():
     return {'name': NAME, 'type': 'LOAD_BALANCER', 'image': IMAGE,
-        'entrypoint': ['python', '-m', 'vllm.entrypoints.openai.api_server'],
-        'cmd': ['--model', MODEL, '--revision', REVISION, '--served-model-name', 'qwen38',
+        'entrypoint': ['vllm', 'serve'],
+        'cmd': [MODEL, '--revision', REVISION, '--served-model-name', 'qwen38',
                 '--host', '0.0.0.0', '--port', '80', '--max-model-len', '32768',
                 '--max-num-seqs', '1', '--gpu-memory-utilization', '0.9',
                 '--limit-mm-per-prompt', '{"image":30}'],
         'disk': 100, 'ports': [],
         'env': {'PORT': '80', 'PORT_HEALTH': '80', 'HEALTH_CHECK_PATH': '/health',
                 'HF_HUB_DISABLE_PROGRESS_BARS': '1', 'TOKENIZERS_PARALLELISM': 'false'},
-        'gpu': {'pools': ['ADA_48_PRO'], 'count': 1, 'minCudaVersion': '12.9'},
+        # The pinned official image is built on CUDA 13.0.2.
+        'gpu': {'pools': ['ADA_48_PRO'], 'count': 1, 'minCudaVersion': '13.0'},
         'workers': {'min': 0, 'max': 1, 'idleTimeout': 300},
         'scaling': {'type': 'REQUEST_COUNT', 'requestCount': 1},
         'timeout': 300000, 'flashboot': 'FLASHBOOT'}
@@ -65,8 +66,13 @@ def main():
             page = listing.get('pagination', {}).get('nextCursor')
             if not page: break
         if len(matches) > 1: raise RuntimeError('Multiple matching Qwen endpoints need reconciliation')
-        endpoint = matches[0] if matches else api('serverless', config())
+        desired = config()
+        endpoint = matches[0] if matches else api('serverless', desired)
         if endpoint.get('image') != IMAGE: raise RuntimeError('Existing Qwen endpoint image differs')
+        if matches:
+            # Reconcile startup settings as well as identity after interrupted setups.
+            endpoint = api('serverless/' + endpoint['id'],
+                {key: desired[key] for key in ('entrypoint', 'cmd', 'gpu', 'workers')}, 'PATCH')
         state['qwen'] = endpoint['id']
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, indent=2) + '\n')

@@ -114,6 +114,7 @@ class SpotterApp(HostedRunner):
 
 def create_app():
     public_origin = os.environ.get('SPOTTER_ORIGIN', 'http://127.0.0.1:8820')
+    development = public_origin.startswith('http://127.0.0.1:')
     api = os.environ.get('YAM_SESSION_API', API)
     camera_origin = os.environ.get('YAM_CAMERA_ORIGIN', api)
     settings = {key: os.environ.get('SPOTTER_' + key.upper(), '') for key in
@@ -121,9 +122,11 @@ def create_app():
     settings.update(vlm_model=os.environ.get('SPOTTER_VLM_MODEL', 'qwen38'),
                     max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')))
     app = SpotterApp(settings=settings, public_origin=public_origin, session_api=api,
-        camera_origin=camera_origin, development=public_origin.startswith('http://127.0.0.1:'),
+        camera_origin=camera_origin, development=development,
         hardware_control=True, default_provider='spotter',
-        recording_root=os.environ.get('SPOTTER_RECORDINGS', '/tmp/spotter-recordings'),
+        # The shared runner permits durable station recordings only on localhost.
+        # Public visitors keep the runner's private, ephemeral per-session storage.
+        recording_root=os.environ.get('SPOTTER_RECORDINGS', '/tmp/spotter-recordings') if development else None,
         robots=[{'id': 'yam-1', 'name': 'YAM1 · DreamZero', 'url': public_origin + '/'}],
         share_conversation=False)
     app.camera_origin_value = camera_origin.rstrip('/')

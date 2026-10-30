@@ -157,3 +157,19 @@ def test_invalid_repair_rejected_before_execution(step):
 def test_model_json_accepts_fenced_object_and_rejects_nonobject():
     assert object_from_text('```json\n{"flag":false}\n```')=={'flag':False}
     with pytest.raises(ValueError):object_from_text('[]')
+
+
+def test_public_host_uses_private_ephemeral_recordings(monkeypatch, tmp_path):
+    import shutil
+    from spotter_yam.app import create_app
+    monkeypatch.setenv('SPOTTER_ORIGIN', 'https://spotter.example.com')
+    monkeypatch.setenv('SPOTTER_RECORDINGS', str(tmp_path / 'station-only'))
+    app = create_app()
+    try:
+        assert app.origin == 'https://spotter.example.com'
+        assert app.secure and app.hardware_control
+        assert app.retain_recordings is False
+        assert not (tmp_path / 'station-only').exists()
+        assert b'Spotter on Blupe' in app.page()
+    finally:
+        shutil.rmtree(app.root)
