@@ -40,8 +40,8 @@ before admission. Dream-1 starts its isolated SDK worker after lease grant,
 overlapping native robot preparation; only one SDK worker runs per instance.
 Visitors never receive either model credential or the robot session capability.
 
-The VLM URL is an administrator-controlled OpenAI-compatible `/v1` base serving
-chat completions and model discovery. The paper's open-source setting uses
+The VLM URL is an administrator-controlled OpenAI-compatible base serving
+chat completions. The self-hosted setting uses
 Qwen3.8-27B-FP8 (served name `qwen38`). The YAM prompts replace Franka-specific
 millimetre aperture assumptions with normalized grippers and visual evidence.
 Frozen simulator lessons are not blindly applied to physical YAM geometry.
@@ -49,8 +49,41 @@ Frozen simulator lessons are not blindly applied to physical YAM geometry.
 The pinned DreamZero checkpoint remains **YAM1 only**. Robo-house uses the hosted
 `dreamlabs/dream-1-beta` API with its own saved controller geometry and calibration.
 Dream-1 is a hosted policy; its model weights are not supplied by this repository.
-The open-source Qwen supervisor runs separately on RunPod serverless GPUs. The
-AWS web backend sends images and measured state to it; neither model runs on the YAM.
+The qualified self-hosted Qwen supervisor runs on RunPod serverless GPUs. The
+AWS web backend sends images and measured state to the configured supervisor;
+neither model runs on the YAM.
+
+### Managed Qwen through OpenRouter
+
+OpenRouter support is implemented; switching the live hosts requires a funded
+server-owned key and live validation. `deploy/robohouse.env.example` contains
+the complete target configuration:
+
+```sh
+SPOTTER_VLM_API_STYLE=openrouter
+SPOTTER_VLM_ENDPOINT=https://openrouter.ai/api/v1
+SPOTTER_VLM_MODEL=qwen/qwen3.8-27b
+SPOTTER_VLM_KEY_FILE=/home/ubuntu/.config/openrouter/api-key
+```
+
+Install the key as an owner-readable credential file outside the repository.
+The browser never receives it. OpenRouter requests use its normalized reasoning
+setting with reasoning disabled, JSON output, and routing that requires support
+for all requested parameters. Camera frames retain the same three-camera format.
+The selected model is Qwen3.8-27B; provider quantization/revision can differ from
+the pinned self-hosted FP8 deployment, so this is not an identical checkpoint run.
+
+Before queue admission, the managed supervisor makes a small authenticated
+completion request (up to32output tokens) to verify model access and credits.
+The public model catalog alone cannot establish readiness. Authentication,
+credit and API failures end preparation with a sanitized error; they do not
+enter the self-hosted twenty-minute GPU-warmup retry loop. A readiness check
+does not establish image understanding or physical task success: validate a
+three-camera inference and a bounded real run before qualifying the migration.
+
+For self-hosting, keep `SPOTTER_VLM_API_STYLE=vllm` (the default); its model
+discovery/warmup behavior remains available. Both providers fail closed if
+supervision fails during execution.
 
 Dream-1 retains its live 5 Hz three-camera history during policy execution.
 Before handback after a Spotter repair, the adapter resets the SDK episode and
@@ -80,9 +113,9 @@ Do not put credentials in this repository or in browser settings.
 Public hosting keeps the shared runner's private, ephemeral visitor recordings;
 `SPOTTER_RECORDINGS` applies only to localhost station hosting.
 
-The inference configuration pins the Qwen model revision and official vLLM image.
+The self-hosted inference configuration pins the Qwen model revision and official vLLM image.
 That image uses its native `vllm serve` command and requires CUDA 13.0 or newer.
-Both model endpoints allow at most one worker each and scale to zero after five
+The RunPod model endpoints allow at most one worker each and scale to zero after five
 idle minutes. Initial startup includes model loading; preparation precedes robot
 queue admission.
 

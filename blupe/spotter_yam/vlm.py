@@ -3,7 +3,7 @@ import base64
 import json
 import re
 import time
-from urllib import request
+from urllib import error, request
 
 SCREEN = '''You screen a bimanual YAM robot's recent task execution. The base policy
 leads. Flag concrete evidence of missed grasps, wrong objects, drops or persistent
@@ -59,12 +59,26 @@ def object_from_text(text):
 
 
 class VisionSupervisor:
-    def __init__(self, endpoint, model, key='', *, timeout=90):
+    def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm'):
+        if api_style not in {'vllm', 'openrouter'}:
+            raise ValueError('Unknown supervisor API style')
+        if api_style == 'openrouter' and not key.strip():
+            raise ValueError('OpenRouter supervisor requires a server-owned API key')
         self.endpoint, self.model, self._key = endpoint.rstrip('/'), model, key
-        self.timeout = timeout
+        self.timeout, self.api_style = timeout, api_style
         self._opener = request.build_opener(request.ProxyHandler())
 
     def ready(self, cancelled=lambda: False):
+        if self.api_style == 'openrouter':
+            if cancelled():
+                raise RuntimeError('Spotter preparation cancelled')
+            # The public model catalog does not verify authentication or credits.
+            result = self.call('Return only JSON: {"ready":true}.', 'Readiness check', [], max_tokens=32)
+            if cancelled():
+                raise RuntimeError('Spotter preparation cancelled')
+            if result.get('ready') is not True:
+                raise RuntimeError('Spotter supervisor returned an invalid readiness response')
+            return
         deadline = time.monotonic() + 1200
         while not cancelled():
             try:
@@ -89,25 +103,51 @@ class VisionSupervisor:
             headers['Authorization'] = 'Bearer ' + self._key
         return headers
 
-    def call(self, system, task, history, *, context=None):
+    def call(self, system, task, history, *, context=None, max_tokens=1800):
         content = [{'type': 'text', 'text': json.dumps({'task': task, 'context': context or {}}, allow_nan=False)}]
         for window in history:
             content.append({'type': 'text', 'text': json.dumps({key: value for key, value in window.items() if key != 'frames'}, allow_nan=False)})
             for frame in window['frames']:
                 content.append({'type': 'text', 'text': frame.name + ' camera'})
                 content.append({'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(frame.jpeg).decode()}})
-        body = {'model': self.model, 'temperature': .1, 'max_tokens': 1800,
+        body = {'model': self.model, 'temperature': .1, 'max_tokens': max_tokens,
                 'response_format': {'type': 'json_object'},
-                'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}],
-                'chat_template_kwargs': {'enable_thinking': False}}
+                'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}]}
+        if self.api_style == 'openrouter':
+            body.update(reasoning={'effort': 'none'},
+                        provider={'require_parameters': True, 'sort': 'latency'})
+        else:
+            body['chat_template_kwargs'] = {'enable_thinking': False}
         req = request.Request(self.endpoint + '/chat/completions', data=json.dumps(body, allow_nan=False).encode(), headers=self._headers())
         try:
             with self._opener.open(req, timeout=self.timeout) as response:
                 result = json.loads(response.read(4 * 1024 * 1024))
+        except error.HTTPError as exc:
+            status = exc.code
+            exc.close()
+            raise self._api_error(status) from None
+        except Exception as exc:
+            raise RuntimeError('Spotter supervisor request failed (' + type(exc).__name__ + ')') from None
+        if isinstance(result, dict) and isinstance(result.get('error'), dict):
+            raise self._api_error(result['error'].get('code')) from None
+        try:
             return object_from_text(result['choices'][0]['message']['content'])
         except Exception as exc:
             # Provider bodies/URLs can carry credentials. Log only the exception class.
             raise RuntimeError('Spotter supervisor request failed (' + type(exc).__name__ + ')') from None
+
+    @staticmethod
+    def _api_error(status):
+        # Never expose provider bodies, URLs or credential fragments in run notes.
+        if type(status) is not int:
+            status = None
+        messages = {
+            401: 'Spotter supervisor API key was rejected. Check the host configuration.',
+            402: 'Spotter supervisor has insufficient API credits. Add credits before retrying.',
+            403: 'Spotter supervisor API access was denied. Check the key permissions.',
+            429: 'Spotter supervisor API is rate limited. Please retry shortly.',
+        }
+        return RuntimeError(messages.get(status, 'Spotter supervisor API request failed'))
 
     def screen(self, task, history):
         result = self.call(SCREEN, task, history)

@@ -116,3 +116,38 @@ def test_robohouse_missing_dream_runtime_cannot_start():
             app.make_spotter('', '.')
     finally:
         shutil.rmtree(app.root)
+
+
+def test_managed_supervisor_requires_a_nonempty_key_and_reaches_station_factory(tmp_path, monkeypatch):
+    import shutil
+    from spotter_yam import app as app_module
+    credentials, python, key = (tmp_path / name for name in ('credentials', 'python', 'key'))
+    credentials.touch(); python.touch(); key.touch()
+    settings = {'dream_credentials_file': str(credentials), 'dream_python': str(python),
+        'vlm_endpoint': 'https://openrouter.ai/api/v1', 'vlm_model': 'qwen/qwen3.8-27b',
+        'vlm_api_style': 'openrouter', 'vlm_key_file': str(key)}
+    for key_value in ('', 'test-key'):
+        key.write_text(key_value)
+        app = SpotterApp(settings=settings, robot_id=ROBOHOUSE,
+            public_origin='http://127.0.0.1:8821', development=True,
+            session_api='', camera_origin='http://127.0.0.1:8089')
+        try:
+            assert app.configured is bool(key_value)
+            if not key_value:
+                with pytest.raises(Exception, match='need configuration'):
+                    app.make_spotter('', tmp_path)
+            else:
+                # A real station factory, with geometry construction isolated from
+                # this HTTP configuration test. No model or hardware request runs.
+                monkeypatch.setattr(app_module, 'RoboCurveTrajectory', lambda **kwargs: object())
+                monkeypatch.setattr(app_module, 'workspace_for_robot', lambda robot_id: SimpleNamespace(
+                    rgb_geometry_kwargs=lambda: {}, configure_geometry=lambda value: None))
+                monkeypatch.setattr(app, 'make_base', lambda *args: SimpleNamespace(model='dream-1'))
+                adapter = app.make_spotter('', tmp_path)
+                try:
+                    assert adapter.supervisor.api_style == 'openrouter'
+                    assert adapter.supervisor.model == 'qwen/qwen3.8-27b'
+                finally:
+                    adapter.close_transport()
+        finally:
+            shutil.rmtree(app.root)

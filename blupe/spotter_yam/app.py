@@ -35,6 +35,7 @@ class SpotterApp(HostedRunner):
         self.policy_key_file = self.settings.get('policy_key_file', '')
         self.vlm_endpoint = self.settings.get('vlm_endpoint', '')
         self.vlm_model = self.settings.get('vlm_model', 'qwen38')
+        self.vlm_api_style = self.settings.get('vlm_api_style', 'vllm')
         self.vlm_key_file = self.settings.get('vlm_key_file', '')
         self.max_lead = int(self.settings.get('max_lead', 2))
         kwargs.setdefault('robot_id', 'yam-1')
@@ -47,7 +48,10 @@ class SpotterApp(HostedRunner):
         base_configured = (bool(self.policy_endpoint and self.policy_key_file) if self.base_provider == 'dreamzero'
                            else bool(self.dream_credentials and self.dream_python
                                      and Path(self.dream_credentials).is_file() and Path(self.dream_python).is_file()))
-        self.configured = bool(base_configured and self.vlm_endpoint)
+        vlm_configured = bool(self.vlm_endpoint and (self.vlm_api_style != 'openrouter'
+                              or self.vlm_key_file and Path(self.vlm_key_file).is_file()
+                              and secret_file(self.vlm_key_file)))
+        self.configured = bool(base_configured and vlm_configured)
         super().__init__(**kwargs)
         # The separate host does not inherit the main playground's media proxy.
         # Use the runner's fresh per-camera transport rather than a missing composite.
@@ -87,7 +91,8 @@ class SpotterApp(HostedRunner):
         workspace = workspace_for_robot(self.robot_id)
         geometry = RoboCurveTrajectory(**workspace.rgb_geometry_kwargs())
         workspace.configure_geometry(geometry)
-        supervisor = VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file))
+        supervisor = VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file),
+                                      api_style=self.vlm_api_style)
         def prepare_geometry():
             with request.urlopen(self.camera_origin_value + '/v1/robots/' + self.robot_id + '/calibration', timeout=10) as response:
                 report = json.loads(response.read(4 * 1024 * 1024))
@@ -147,6 +152,7 @@ def create_app():
     settings = {key: os.environ.get('SPOTTER_' + key.upper(), '') for key in
                 ('policy_endpoint', 'policy_key_file', 'vlm_endpoint', 'vlm_key_file')}
     settings.update(vlm_model=os.environ.get('SPOTTER_VLM_MODEL', 'qwen38'),
+                    vlm_api_style=os.environ.get('SPOTTER_VLM_API_STYLE', 'vllm'),
                     max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')),
                     dream_credentials_file=os.environ.get('SPOTTER_DREAM_CREDENTIALS_FILE', ''),
                     dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''))
