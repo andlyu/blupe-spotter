@@ -154,13 +154,18 @@ before any completion claim.
   advanced to24.993807s/readyState4; native scrubber sought26.75s/readyState4.
   Actual recorded arms are visible in all three camera views.
 - Previous-run browser:both ep_2e08e138f81f4ac0 andep_00ed44db3c87402f were
-  selected, played and sought on the website. Separately, the user's3:29pm
-  episodeep_be009411059045e2 is waiting for original native frame transfer.
-  The new test recording is not a replacement for that earlier episode.
+  selected, played and sought on the website. The user's3:29pm
+  episodeep_be009411059045e2 was separately recovered from all1118original
+  samples and all three native camera views. It became locally ready at
+  23:00:50.4133263UTC. Website playback advanced0.20213s→5s/readyState4,
+  and native seeking returned2.5s/readyState4. This is its own original footage;
+  the new test recording is not a replacement. Its native preview is accelerated
+  9.16× with idle pauses removed, as labeled on the page.
 - Evidence retained in this chat workspace'soutputs/spotter/:
   live-replay-browser-proof.json,live-replay-physical-proof.json,
   live-acceptance-first.jpg,live-acceptance-motion.jpg,
-  live-replay-playing.jpg,live-replay-fresh-open.jpg. Physical proof includes
+  live-replay-playing.jpg,live-replay-fresh-open.jpg,
+  replay-be-recovered.jpg,replay-be-browser-proof.json. Physical proof includes
   source-camera timestamps,MP4 SHA256 andffprobe, plus byte-range seek206.
 - **8/13 requirements verified. Remaining gaps:**source repository is private
   with no public-visibility exception established; fresh human join does not
