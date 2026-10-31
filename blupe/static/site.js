@@ -23,7 +23,7 @@ window.yamApplication = {
       const text = progress.textContent;
       const starting = 'Starting Spotter and joining the robot queue…';
       if (text !== starting && !/^(Preparing the model GPU|Preparing before the robot queue · warming |In the robot queue · warming )/.test(text)) return;
-      const next = status.textContent.trim() === 'running' ? '' : starting;
+      const next = status.textContent.trim().toLowerCase() === 'running' ? '' : starting;
       if (progress.textContent !== next) progress.textContent = next;
     }
     if (setup.base_provider === 'dream' && progress && status) {
