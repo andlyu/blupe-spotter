@@ -22,7 +22,7 @@ from .policy import SpotterAdapter
 from .vlm import VisionSupervisor
 from .ui import runner_script
 from .motion import YAMMotionAdapter
-from .dream import SpotterDreamAdapter
+from .dream import SpotterDreamAdapter, PreparedDreamWorker, PREPARATION_TIMEOUT_S
 from .history import ReceiptHistory
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
@@ -70,7 +70,8 @@ class SpotterApp(HostedRunner):
         self.dream_preparation_failed = False
         resident_dir = self.settings.get('dream_resident_dir', '')
         if self.base_provider == 'dream' and base_configured and resident_dir:
-            self.dream_resident = DreamWorkerPool(self.dream_python, self.dream_credentials, resident_dir)
+            self.dream_resident = DreamWorkerPool(self.dream_python, self.dream_credentials, resident_dir,
+                worker_factory=PreparedDreamWorker, prime_timeout=PREPARATION_TIMEOUT_S)
         # The separate host does not inherit the main playground's media proxy.
         # Use the runner's fresh per-camera transport rather than a missing composite.
         self.video_stream = None
@@ -98,7 +99,7 @@ class SpotterApp(HostedRunner):
     async def prepare_dream(self):
         started = time.perf_counter()
         try:
-            await asyncio.to_thread(self.dream_resident.prime, timeout=360)
+            await asyncio.to_thread(self.dream_resident.prime, timeout=PREPARATION_TIMEOUT_S)
             logging.getLogger(__name__).info('Dream solver prepared in %.3fs', time.perf_counter() - started)
         except Exception as error:
             self.dream_preparation_failed = True

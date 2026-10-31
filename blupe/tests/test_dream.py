@@ -162,7 +162,7 @@ def resident_app(tmp_path, monkeypatch):
         ready = False
         closed = False
         failure = False
-        def __init__(self, *args): pass
+        def __init__(self, *args, **kwargs): self.options = kwargs
         def status(self):
             return {'ready': self.ready, 'busy': False, 'preparing': False,
                     'recovery_attempts': 0, 'recovery_exhausted': False}
@@ -316,3 +316,35 @@ def test_capacity_wait_honors_stop_before_another_request(capacity_adapter, monk
     with pytest.raises(RuntimeError, match='cancelled'):
         base.build_trajectory('move', measured, 8)
     assert len(calls) == 1
+
+
+def test_resident_prepares_only_the_exposed_checkpoint_with_bounded_startup(monkeypatch):
+    from spotter_yam.dream import PreparedDreamWorker, PREPARATION_TIMEOUT_S
+    from remote_yam.dream_policy import DreamWorker
+    calls = []
+    monkeypatch.setattr(DreamWorker, 'call', lambda self, command, **kwargs: calls.append((command, kwargs)))
+    worker = object.__new__(PreparedDreamWorker)
+    worker.call('prime', checkpoints=['dreamlabs/dream-1-beta', 'dreamlabs/dream-1-beta-flash'],
+                timeout=PREPARATION_TIMEOUT_S)
+    assert calls == [('prime', {'checkpoints': ['dreamlabs/dream-1-beta'], 'timeout': 900})]
+    with pytest.raises(ValueError, match='Unknown station checkpoint'):
+        worker.call('configure', checkpoint='dreamlabs/dream-1-beta-flash')
+    assert len(calls) == 1
+
+
+def test_prepared_launcher_changes_only_startup_wait_and_guards_vendor_contract(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+    from spotter_yam.dream import PreparedDreamWorker
+    from remote_yam.dream_policy import DreamWorker
+    monkeypatch.setattr(DreamWorker, '__init__', lambda *args: None)
+    PreparedDreamWorker(sys.executable, 'unused', tmp_path)
+    launcher = tmp_path / 'prepared-python'
+    assert launcher.read_text().splitlines()[0] == '#!' + sys.executable
+    fixture = tmp_path / 'worker.py'
+    fixture.write_text('from types import SimpleNamespace\ntraj_ready=SimpleNamespace(wait=lambda seconds:print(seconds))\ntraj_ready.wait(120)\n')
+    result = subprocess.run([sys.executable, str(launcher), str(fixture)], capture_output=True, text=True)
+    assert result.returncode == 0 and result.stdout.strip() == '600'
+    fixture.write_text('raise AssertionError("must not execute an unknown contract")\n')
+    result = subprocess.run([sys.executable, str(launcher), str(fixture)], capture_output=True, text=True)
+    assert result.returncode != 0 and 'preparation contract changed' in result.stderr

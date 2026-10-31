@@ -1,8 +1,51 @@
 """Spotter handoff for the pinned Dream-1 adapter's causal action history."""
 import math
+from pathlib import Path
 import time
 
-from remote_yam.dream_policy import DreamAdapter
+from remote_yam.dream_policy import DreamAdapter, DreamWorker
+
+CHECKPOINT = 'dreamlabs/dream-1-beta'
+PREPARATION_TIMEOUT_S = 900
+
+
+class PreparedDreamWorker(DreamWorker):
+    """Station-only startup budget; the pinned solver itself is unchanged."""
+    def __init__(self, python, credentials, directory):
+        directory = Path(directory)
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # The upstream worker hardcodes a 120s wait for SDK background compile.
+        # On the shared host that expires while JAX is still making progress.
+        # Extend only this startup event wait in an in-memory, guarded overlay;
+        # retain the pinned protocol, IK settings, kernels and release handling.
+        launcher = directory / 'prepared-python'
+        # Preserve the venv interpreter path; resolving its symlink would run
+        # system Python without the pinned Dream SDK.
+        launcher.write_text('#!' + str(Path(python).absolute()) + '\n' + '''import sys
+from pathlib import Path
+worker = Path(sys.argv[1])
+source = worker.read_text()
+needle = 'traj_ready.wait(120)'
+if source.count(needle) != 1:
+    raise RuntimeError('Pinned Dream preparation contract changed')
+sys.path.insert(0, str(worker.parent))
+exec(compile(source.replace(needle, 'traj_ready.wait(600)'), str(worker), 'exec'),
+     {'__name__': '__main__', '__file__': str(worker)})
+''')
+        launcher.chmod(0o700)
+        super().__init__(launcher, credentials, directory)
+
+    def call(self, command, **kwargs):
+        if command == 'prime':
+            # This site exposes beta only. Do not compile an unused Flash client
+            # or retain a second solver on the shared host.
+            requested = kwargs.get('checkpoints', [])
+            if CHECKPOINT not in requested or set(requested) - {CHECKPOINT, CHECKPOINT + '-flash'}:
+                raise ValueError('Unknown station checkpoint preparation')
+            kwargs['checkpoints'] = [CHECKPOINT]
+        elif command == 'configure' and kwargs.get('checkpoint') != CHECKPOINT:
+            raise ValueError('Unknown station checkpoint')
+        return super().call(command, **kwargs)
 
 
 class CapacityRefusal(RuntimeError):
