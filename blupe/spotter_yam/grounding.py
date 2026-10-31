@@ -70,6 +70,10 @@ class RepairGrounding:
         return history, context, points
 
     def resolve(self, result, points):
+        if (not isinstance(result, dict) or not isinstance(result.get('steps'), list)
+                or not 1 <= len(result['steps']) <= 8
+                or not all(isinstance(step, dict) for step in result['steps'])):
+            raise ValueError('Repair steps must be a list of 1–8 action objects')
         result = deepcopy(result)
         referenced = {step.get('point') for step in result.get('steps', [])
                       if step.get('op') == 'move_to_point' and isinstance(step.get('point'), str)}

@@ -105,6 +105,15 @@ not proof of a grasp. Use replan if the expectation is not visibly met.
 Success means the whole user's task is visually complete, not just the repair
 step. For placement, the object must be visibly released and resting on the
 target. An object still held over or beside it has not been placed.'''
+VERIFY += '''
+For checkpoint.scope="intermediate", judge only the completed_step and the
+already-executed prefix. remaining_steps have NOT run yet: do not reject a
+successful lift because pending transport or release has not happened. At a lift
+checkpoint, verified requires visible evidence that the intended object rose
+with the gripper; if it stayed on the table or the gripper is empty, replan.
+The full-plan expectation describes the eventual result, not a demand that all
+remaining steps already happened. Even at an intermediate checkpoint, success
+still requires the whole task visibly complete and the object released on target.'''
 
 
 def object_from_text(text):

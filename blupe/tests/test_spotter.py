@@ -174,7 +174,7 @@ def test_failed_repair_discards_remaining_steps_and_replans_from_fresh_pose(adap
 
 def test_failed_repair_still_obeys_plan_budget(adapter):
     adapter._last_kind = 'repair'; adapter._rounds = adapter.max_plan_rounds
-    adapter.trajectory_failed('joint_settle_timeout', 'Not settled', 2)
+    adapter.trajectory_failed('final_position_mismatch', 'Target not reached', 2)
     with pytest.raises(RuntimeError, match='plan budget'):
         adapter.build_trajectory('move', observation(9), 9)
     assert not adapter.geometry.targets
@@ -260,6 +260,81 @@ def test_repeated_invalid_handbacks_stop_without_base_or_repair_motion(adapter):
         adapter.build_trajectory('move block', observation(8), 8)
     assert len(adapter.supervisor.plans) == 2
     assert not adapter.base.calls and not adapter.geometry.targets
+
+
+def test_invalid_grounded_action_is_corrected_before_any_motion(adapter):
+    from spotter_yam.grounding import RepairGrounding
+    ground = RepairGrounding(SimpleNamespace(connection=SimpleNamespace(close=lambda: None)), lambda r: None)
+    ground.snapshot = SimpleNamespace(age=lambda: .5)
+    points = {'block': {'left': [.4, 0, .1], 'right': [.4, .2, .1]}}
+    ground.capture = lambda task, history, supervisor, cancelled: (history, {'points': points}, points)
+    adapter.grounding = ground
+    def repair(task, history, context):
+        adapter.supervisor.plans.append((history, context))
+        step = (dict(op='move_to', arm='left', xyz=[.8, .8, .8]) if len(adapter.supervisor.plans) == 1
+                else dict(op='move_to_point', arm='left', point='block', offset=[0, 0, .05]))
+        return dict(expectation='approach block', steps=[step])
+    adapter.supervisor.repair = repair
+    adapter._chunks = 2; adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
+    adapter.build_trajectory('move block', observation(8), 8)
+    assert len(adapter.supervisor.plans) == 2 and adapter._rounds == 1
+    assert 'point reference' in adapter.supervisor.plans[-1][1]['planner_feedback']
+    assert len(adapter.geometry.targets) == 1
+    assert adapter.geometry.targets[0][0] == {'left_x': .4, 'left_y': 0, 'left_z': pytest.approx(.15)}
+
+
+def test_invalid_repair_schema_has_bounded_correction_and_sends_no_motion(adapter):
+    def repair(task, history, context):
+        adapter.supervisor.plans.append((history, context))
+        return dict(expectation='invalid', steps=[dict(op='unknown')])
+    adapter.supervisor.repair = repair
+    adapter._chunks = 2; adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
+    with pytest.raises(RuntimeError, match='valid repair'):
+        adapter.build_trajectory('move block', observation(8), 8)
+    assert len(adapter.supervisor.plans) == 2
+    assert not adapter.base.calls and not adapter.geometry.targets
+
+
+@pytest.mark.parametrize('actor', ['policy', 'repair'])
+def test_timed_out_movement_stops_without_automatic_retry(adapter, actor):
+    adapter._last_kind = actor
+    adapter.base.trajectory_failed = lambda *a, **k: pytest.fail('Do not automatically recover timed-out motion')
+    with pytest.raises(RuntimeError, match='without automatic motion retry'):
+        adapter.trajectory_failed('joint_settle_timeout', 'No completion', 8)
+    with pytest.raises(RuntimeError, match='cancelled'):
+        adapter.build_trajectory('move block', observation(9), 9)
+    assert not adapter.base.calls and not adapter.geometry.targets
+
+
+def test_lift_verification_names_completed_checkpoint_and_pending_placement(adapter):
+    from collections import deque
+    lift = dict(op='lift', arm='left', dz=.05)
+    pending = [dict(op='move_to', arm='left', xyz=[.4, 0, .2]), dict(op='gripper', arm='left', value=1)]
+    adapter._repair_context = dict(expectation='grasp, lift, transport and release onto plate')
+    adapter._repair = deque(pending)
+    adapter._primitive(lift, observation(), 0)
+    adapter.trajectory_completed(observation(1), 1)
+    seen = []
+    adapter.supervisor.verify = lambda task, history, context: seen.append(context) or dict(verdict='verified', why='object lifted')
+    adapter.build_trajectory('move block', observation(1), 1)
+    assert seen[0]['checkpoint']['completed_step'] == lift
+    assert seen[0]['checkpoint']['remaining_steps'] == pending
+    assert seen[0]['checkpoint']['scope'] == 'intermediate'
+    assert not adapter.supervisor.plans
+    assert adapter.geometry.targets[-1][0] == {'left_x': .4, 'left_y': 0, 'left_z': .2}
+
+
+def test_empty_lift_replans_instead_of_executing_pending_transport(adapter):
+    from collections import deque
+    adapter._repair_context = dict(expectation='place block')
+    adapter._repair = deque([dict(op='move_to', arm='left', xyz=[.6, 0, .2])])
+    adapter._primitive(dict(op='lift', arm='left', dz=.05), observation(), 0)
+    adapter.trajectory_completed(observation(1), 1)
+    adapter.supervisor.verify = lambda *a: dict(verdict='replan', why='block stayed on table')
+    adapter.build_trajectory('move block', observation(1), 1)
+    assert adapter.supervisor.plans[-1][1]['verification']['why'] == 'block stayed on table'
+    assert adapter.geometry.targets[-1][0]['left_x'] == pytest.approx(.28)
+    assert not any(targets.get('left_x') == .6 for targets, _, _ in adapter.geometry.targets)
 
 
 def test_repair_context_retains_planned_steps_and_actual_handback(adapter):

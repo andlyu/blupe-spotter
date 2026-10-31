@@ -78,6 +78,13 @@ def test_policy_handback_needs_no_expired_geometric_target():
     assert value.resolve({'steps': [{'op': 'policy'}]}, points)['steps'] == [{'op': 'policy'}]
 
 
+@pytest.mark.parametrize('steps', [None, ['not an action']])
+def test_non_action_json_values_become_recoverable_validation_errors(steps):
+    value, _, _, points = ground()
+    with pytest.raises(ValueError, match='action objects'):
+        value.resolve({'steps': steps}, points)
+
+
 def test_slow_plan_refreshes_and_checks_the_selected_surface_before_motion():
     value, _, _, points = ground()
     value.snapshot.age = lambda: 6.

@@ -143,6 +143,13 @@ rounds. The three-round physical repair limit is unchanged. This port-specific
 progress guard is related to upstream's optional Spotter-H earned-handback rule;
 it is not a claim that upstream enables that optional rule by default.
 
+Schema and measured-point validation share the same two-proposal correction
+budget; invalid proposals never send motion. Verification names the completed
+checkpoint and pending steps, so a successful lift can continue to its planned
+placement while an empty grasp still replans. A timed-out physical movement stops
+the run without automatic retry. Public repair notes retain planned steps
+separately from completed packet receipts.
+
 The API marks Robo-house calibration `experimental_requires_fresh_validation`.
 A measured surface point is not a validated grasp pose or a contact sensor. The
 planner receives that quality report; physical task success must still be checked
