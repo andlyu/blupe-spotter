@@ -8,6 +8,9 @@ from urllib import error, request
 SCREEN = '''You screen a bimanual YAM robot's recent task execution. The base policy
 leads. Flag concrete evidence of missed grasps, wrong objects, drops or persistent
 lack of progress. Compare object motion across the time-ordered camera frames.
+An unfinished task, a held object, or carrying it toward the target is ordinary
+progress. Do not flag a missed release merely because the gripper is still closed.
+Use preceding_packet receipts to distinguish requested actions from outcomes.
 Grippers are normalized 0 closed, 1 open; these are not millimetres, a force sensor,
 or proof that an object is held. One stationary arm can be normal. Camera/state
 timestamps are not hardware synchronized. If evidence is unreadable, flag it.
@@ -19,7 +22,20 @@ ordinary slow progress is not a failure. Compare task-relevant objects across
 the history, then confirm with measured state. Never infer a successful grasp
 from a gripper number alone. A closed gripper can be empty. Return only JSON:
 {"verdict":"pass"|"intervene"|"success","why":"brief evidence"}.
-Success is your visual assessment, not a privileged task-success signal.'''
+Success is your visual assessment, not a privileged task-success signal.
+Each preceding_packet is the controller's completed/failed packet receipt; its
+target is what was requested, while measured is what the robot actually reached.
+Packet completion is NOT task completion or proof of a grasp. A request to keep
+closing/holding the gripper while transporting an object is normal progress.
+Do not label that a missed release. A missed release requires evidence of a
+completed OPEN request that failed, or an actual failed placement/departure;
+the object not being on the target yet is insufficient. Compare the time-ordered
+images and receipts. A completed close/lift where the object stays behind is
+concrete missed-grasp evidence. When evidence shows ongoing approach, grasp,
+lift or transport rather than a failed attempt, return pass and let the policy
+continue its next chunk. For placement tasks, success requires the object to be
+visibly released and resting on the requested target. Holding it over or beside
+the target is progress, not completed placement.'''
 
 REPAIR = '''Plan a short Spotter repair from the CURRENT measured state and
 camera frames, which may differ from the earlier detected failure. Keep the
@@ -40,11 +56,20 @@ visually after this repair","steps":[...]}. At most 8 steps. Each step must name
 after a lift or completed plan segment it asks you to verify the visible outcome before
 continuing. Prefer re-staging then handing back to the base policy. If current
 evidence no longer supports a repair, return only the policy hand-back.'''
+REPAIR += '''
+Do not open a gripper just because the task is unfinished. Confirm in current
+images that a held object is actually over the intended receiving surface before
+releasing it. If the base policy is still carrying the object toward that surface,
+or the needed 3D target is uncertain, hand back instead of guessing a release or
+an absolute xyz pose. Completed packet intent is not proof of grasp or placement.'''
 
 VERIFY = '''Verify the last Spotter repair using fresh CURRENT images and measured
 state against the recorded expectation. Return JSON {"verdict":"verified"|
 "replan"|"success","why":"brief visual evidence"}. A closed gripper alone is
-not proof of a grasp. Use replan if the expectation is not visibly met.'''
+not proof of a grasp. Use replan if the expectation is not visibly met.
+Success means the whole user's task is visually complete, not just the repair
+step. For placement, the object must be visibly released and resting on the
+target. An object still held over or beside it has not been placed.'''
 
 
 def object_from_text(text):

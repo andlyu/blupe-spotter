@@ -162,6 +162,46 @@ def test_failed_repair_still_obeys_plan_budget(adapter):
     assert not adapter.geometry.targets
 
 
+def test_supervisor_sees_completed_gripper_intent_separately_from_measurement(adapter):
+    adapter.base.build_trajectory = lambda prompt, obs, step: [dict(step_id=step,
+        left_joints_deg=obs['left_joints_deg'], right_joints_deg=obs['right_joints_deg'],
+        left_gripper=1., right_gripper=.47)]
+    adapter.build_trajectory('place the block', observation(), 0)
+    assert adapter.history[-1]['preceding_packet'] is None  # planned is not executed
+    measured = {**observation(1), 'right_gripper': .68}
+    adapter.trajectory_completed(measured, 1)
+    adapter.build_trajectory('place the block', measured, 1)
+    window = adapter.history[-1]
+    assert window['preceding_packet']['status'] == 'completed'
+    assert window['preceding_packet']['actor'] == 'policy'
+    assert window['preceding_packet']['target']['right_gripper'] == .47
+    assert window['measured']['right_gripper'] == .68
+    adapter._future[1].result(timeout=2)
+    assert adapter.supervisor.calls[-1][1][-1]['preceding_packet']['target']['right_gripper'] == .47
+
+
+def test_failed_packet_is_failure_evidence_not_a_completed_action(adapter):
+    adapter.base.trajectory_failed = lambda *a, **k: None
+    adapter.build_trajectory('move', observation(), 0)
+    adapter.trajectory_failed('final_position_mismatch', 'Target not reached', 1)
+    window = adapter._snapshot(observation(1))
+    assert window['preceding_packet']['status'] == 'failed'
+    assert window['preceding_packet']['failure_code'] == 'final_position_mismatch'
+    assert adapter._chunks == 0
+
+
+def test_adjusted_repair_receipt_uses_executed_target_and_names_primitive(adapter):
+    adapter._primitive(dict(op='gripper', arm='right', value=1.), observation(), 0)
+    adjusted = {**observation(1), 'right_gripper': .9}
+    adapter.trajectory_adjusted(adjusted)
+    adapter.trajectory_completed(adjusted, 1)
+    window = adapter._snapshot(adjusted)
+    receipt = window['preceding_packet']
+    assert receipt['actor'] == 'repair' and receipt['operation'] == 'gripper'
+    assert receipt['arm'] == 'right' and receipt['target']['right_gripper'] == .9
+    assert adapter._chunks == 0
+
+
 def test_unmet_expectation_replans_from_fresh_feedback(adapter):
     adapter._repair_context=dict(expectation='object rises')
     adapter._verify=True

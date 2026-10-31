@@ -11,6 +11,8 @@ Environment=YAM_DREAM_BLOCKWISE_IK=1
 ExecStart=/home/ubuntu/blupe-spotter/.venv/bin/uvicorn spotter_yam.app:create_app --factory --host 127.0.0.1 --port 8821 --workers 1 --no-access-log
 Restart=on-failure
 RestartSec=5
+CPUWeight=500
+CPUQuota=100%
 LimitCORE=0
 NoNewPrivileges=true
 PrivateTmp=true

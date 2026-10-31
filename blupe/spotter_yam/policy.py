@@ -72,6 +72,7 @@ class SpotterAdapter:
         self._checked = 0
         self._chunks = 0
         self._last_kind = None
+        self._pending_packet = self._preceding_packet = None
         self._repair = deque()
         self._repair_context = None
         self._verify = False
@@ -139,7 +140,8 @@ class SpotterAdapter:
         measured = {k: deepcopy(observation.get(k)) for k in ('observed_at', 'step_id',
                     'left_joints_deg', 'right_joints_deg', 'left_gripper', 'right_gripper')}
         window = {'chunk': self._chunks, 'measured': measured,
-                  'cartesian': dict(zip(NAMES, map(float, state))), 'frames': tuple(frames)}
+                  'cartesian': dict(zip(NAMES, map(float, state))), 'frames': tuple(frames),
+                  'preceding_packet': deepcopy(self._preceding_packet)}
         self.history.append(window)
         return window
 
@@ -195,6 +197,7 @@ class SpotterAdapter:
         else: targets = {arm + '_gripper': step['value']}
         points = self.geometry.build(targets, observation, first_step_id)
         self._last_kind = 'repair'
+        self._record_packet(points, operation=op, arm=arm)
         self._verify = op == 'lift' or not self._repair
         self._event('execute', 'Executing Spotter ' + op + ' with the ' + arm + ' arm', operation=op, arm=arm)
         return points
@@ -271,10 +274,27 @@ class SpotterAdapter:
                 # Re-enter from the same unexecuted measured state; the completed future is consumed above.
                 return self.build_trajectory(prompt, observation, first_step_id)
         self._last_kind = 'policy'
+        self._record_packet(points)
         self._event('policy', 'Policy action chunk ready; Spotter supervises in parallel')
         return points
 
+    def _record_packet(self, points, **context):
+        # Requested targets are intent, never proof of contact or task success.
+        # Publish them to the next visual window only after controller feedback.
+        self._pending_packet = dict(actor=self._last_kind, **context,
+            first_step_id=points[0]['step_id'], last_step_id=points[-1]['step_id'],
+            target={key: deepcopy(points[-1][key]) for key in
+                    ('left_joints_deg', 'right_joints_deg', 'left_gripper', 'right_gripper')
+                    if key in points[-1]})
+
+    def _packet_outcome(self, status, waypoint_count, **details):
+        if self._pending_packet is not None:
+            self._preceding_packet = dict(self._pending_packet, status=status,
+                                          waypoint_count=waypoint_count, **details)
+            self._pending_packet = None
+
     def trajectory_completed(self, observation, waypoint_count):
+        self._packet_outcome('completed', waypoint_count)
         if self._last_kind == 'policy':
             self._chunks += 1
             completed = getattr(self.base, 'trajectory_completed', None)
@@ -305,6 +325,7 @@ class SpotterAdapter:
                     message=str(message)[:300], waypoint_count=waypoint_count))
         else:
             raise RuntimeError('Spotter received failed-move feedback without an active packet')
+        self._packet_outcome('failed', waypoint_count, failure_code=code)
         self._event('recovery', 'Move did not reach its target; replanning from measured state',
                     failure_code=code, waypoint_count=waypoint_count)
 
@@ -316,6 +337,10 @@ class SpotterAdapter:
         if callable(close): close()
 
     def trajectory_adjusted(self, details):
+        if self._pending_packet is not None:
+            for key in ('left_joints_deg', 'right_joints_deg', 'left_gripper', 'right_gripper'):
+                if key in details:
+                    self._pending_packet['target'][key] = deepcopy(details[key])
         adjusted = getattr(self.base, 'trajectory_adjusted', None)
         if self._last_kind == 'policy' and callable(adjusted): adjusted(details)
 
