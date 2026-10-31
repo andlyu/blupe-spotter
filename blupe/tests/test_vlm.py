@@ -46,6 +46,21 @@ def provider(content, status=200):
 
 
 class ManagedSupervisorTests(unittest.TestCase):
+    def test_vision_qwen_checkpoint_uses_supported_parameters_and_two_latest_windows(self):
+        with provider({'verdict': 'verified', 'why': 'clearance lift'}) as (endpoint, calls):
+            supervisor = VisionSupervisor(endpoint, 'qwen/qwen3-vl-235b-a22b-instruct', 'test-key', api_style='openrouter')
+            history = [{'chunk': i, 'frames': [SimpleNamespace(name='top', jpeg=str(i).encode())]} for i in range(4)]
+            context = {'checkpoint': {'scope': 'intermediate', 'completed_step':
+                {'op': 'lift', 'arm': 'left', 'dz': .05, 'intent': 'clearance'}}}
+            supervisor.verify('place block', history, context)
+            body = calls[0][3]
+            self.assertNotIn('reasoning', body)
+            content = body['messages'][1]['content']
+            windows = [json.loads(x['text']) for x in content if x['type'] == 'text' and x['text'].startswith('{"chunk"')]
+            self.assertEqual([x['chunk'] for x in windows], [2, 3])
+            self.assertIn('clearance', body['messages'][0]['content'])
+            self.assertIn('does NOT require', body['messages'][0]['content'])
+
     def test_point_selection_sees_only_the_paired_top_image(self):
         with provider({'points': []}) as (endpoint, calls):
             supervisor = VisionSupervisor(endpoint, 'qwen/qwen3.8-27b', 'test-key', api_style='openrouter')

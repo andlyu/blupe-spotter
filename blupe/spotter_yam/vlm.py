@@ -58,7 +58,7 @@ Return only JSON: {"why":"brief evidence","expectation":"what should change
 visually after this repair","steps":[...]}. At most 8 steps. Each step must name
 "arm":"left"|"right", except a final {"op":"policy"} hand-back. Supported steps:
 {"op":"nudge","arm":"left","dxyz":[dx,dy,dz]},
-{"op":"lift","arm":"left","dz":number},
+{"op":"lift","arm":"left","dz":number,"intent":"clearance"|"grasp_check"},
 {"op":"move_to","arm":"left","xyz":[x,y,z]},
 {"op":"rotate","arm":"left","yaw":number},
 {"op":"gripper","arm":"left","value":0..1},
@@ -66,6 +66,11 @@ visually after this repair","steps":[...]}. At most 8 steps. Each step must name
 after a lift or completed plan segment it asks you to verify the visible outcome before
 continuing. Prefer re-staging then handing back to the base policy. If current
 evidence no longer supports a repair, return only the policy hand-back.'''
+REPAIR += '''
+Give every lift an explicit intent: clearance raises/re-stages the hand before a
+grasp, while grasp_check follows an attempted close and must lift the intended
+object. A clearance lift does not require the object to move. These intents do
+not claim that a grasp succeeded; verification uses fresh images.'''
 REPAIR += '''
 Do not open a gripper just because the task is unfinished. Confirm in current
 images that a held object is actually over the intended receiving surface before
@@ -114,6 +119,21 @@ with the gripper; if it stayed on the table or the gripper is empty, replan.
 The full-plan expectation describes the eventual result, not a demand that all
 remaining steps already happened. Even at an intermediate checkpoint, success
 still requires the whole task visibly complete and the object released on target.'''
+
+VERIFY_INTENT = VERIFY.split('For checkpoint.scope=')[0] + '''
+For an intermediate checkpoint, verify ONLY the completed step and executed prefix.
+Remaining steps have NOT run. Use completed_step.intent and the plan expectation.
+A clearance lift raises/re-stages the hand before grasping: it does NOT require
+the target to rise; the target remaining on the table is normal. Check the hand
+moved as intended and the scene is appropriate for the pending approach/rotation/grasp.
+A grasp_check lift follows an attempted close: the intended target must visibly
+rise with the hand. Target still on the table or an empty grasp means replan.
+For unspecified intent, infer from planned steps/expectation; never from the lift
+opcode alone. Never infer holding from a gripper fraction alone. Do not reject a
+step just because pending transport/release is incomplete. Success still requires
+the whole placement complete with the object released on target.'''
+
+VISION_QWEN = 'qwen/qwen3-vl-235b-a22b-instruct'
 
 
 def object_from_text(text):
@@ -183,8 +203,10 @@ class VisionSupervisor:
                 'response_format': {'type': 'json_object'},
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}]}
         if self.api_style == 'openrouter':
-            body.update(reasoning={'effort': 'none'},
-                        provider={'require_parameters': True, 'sort': 'latency'})
+            body['provider'] = {'require_parameters': True, 'sort': 'latency'}
+            # This instruct checkpoint does not advertise a reasoning parameter.
+            if self.model != VISION_QWEN:
+                body['reasoning'] = {'effort': 'none'}
         else:
             body['chat_template_kwargs'] = {'enable_thinking': False}
         req = request.Request(self.endpoint + '/chat/completions', data=json.dumps(body, allow_nan=False).encode(), headers=self._headers())
@@ -241,7 +263,12 @@ class VisionSupervisor:
         return self.call(LOCATE, task, [{**latest, 'frames': frames}], max_tokens=600)
 
     def verify(self, task, history, context):
-        result = self.call(VERIFY, task, history, context=context)
+        checkpoint = context.get('checkpoint', {}).get('completed_step', {})
+        prompt = VERIFY_INTENT if checkpoint.get('intent') in ('clearance', 'grasp_check') else VERIFY
+        if self.model == VISION_QWEN:
+            result = self.call(prompt, task, history[-2:], context=context, max_tokens=1200)
+        else:
+            result = self.call(prompt, task, history, context=context)
         if result.get('verdict') not in {'verified', 'replan', 'success'}:
             raise ValueError('Malformed verification result')
         return result

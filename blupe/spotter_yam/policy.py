@@ -29,6 +29,10 @@ def validate_plan(result):
         op = step['op']
         fields = shapes[op]
         expected = {'op'} | (set() if op == 'policy' else {'arm'}) | set(fields)
+        if op == 'lift' and 'intent' in step:
+            if step['intent'] not in ('clearance', 'grasp_check'):
+                raise ValueError('Lift intent must be clearance or grasp_check')
+            expected.add('intent')
         if set(step) != expected or (op != 'policy' and step.get('arm') not in ('left', 'right')):
             raise ValueError('Spotter repair must explicitly name its arm and fields')
         if op == 'policy' and index != len(steps) - 1:

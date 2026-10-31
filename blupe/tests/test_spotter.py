@@ -324,6 +324,21 @@ def test_lift_verification_names_completed_checkpoint_and_pending_placement(adap
     assert adapter.geometry.targets[-1][0] == {'left_x': .4, 'left_y': 0, 'left_z': .2}
 
 
+@pytest.mark.parametrize('intent', ['clearance', 'grasp_check'])
+def test_typed_lift_intent_survives_validation_and_checkpoint(adapter, intent):
+    from collections import deque
+    step = dict(op='lift', arm='left', dz=.05, intent=intent)
+    assert validate_plan(dict(expectation='check this lift', steps=[step])) == [step]
+    adapter._repair = deque([dict(op='policy')])
+    adapter._primitive(step, observation(), 0)
+    assert adapter._verify_checkpoint['completed_step']['intent'] == intent
+
+
+def test_unknown_lift_intent_is_rejected():
+    with pytest.raises(ValueError, match='intent'):
+        validate_plan(dict(expectation='lift', steps=[dict(op='lift', arm='left', dz=.05, intent='assume_held')]))
+
+
 def test_empty_lift_replans_instead_of_executing_pending_transport(adapter):
     from collections import deque
     adapter._repair_context = dict(expectation='place block')
