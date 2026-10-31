@@ -745,3 +745,41 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
   motion15s, full persistent wait-stage completion/stall verification and final
   all-requirements acceptance. Physical task placement remains unsuccessful.
   Frame sequences are timestamped observations, not continuous screen video.
+
+### Startup latency follow-up — October 31, 2026
+
+- Owner request: “Lets get as close to15 as possible.” Existing owner acceptance
+  remains; this optimization does not reopen waived acceptance gates.
+- Runtime4d58800 reuses a successful authenticated Qwen readiness check for at
+  most60s, bound to endpoint/model/API style/key. Page polling refreshes it before
+  expiry; changed credentials, stale results and failed refreshes require a new
+  successful check. No images, visitor identity or policy state are cached.
+- Robo-house CPUQuota150% permits camera/replay work and resident IK to overlap;
+  CPUWeight500 and other integrations are unchanged. Normal systemd restart
+  took65.528s; cold configure18.134s and full preparation119.482s, without a lease.
+- Full candidate suite:104tests and2subtests passed in13.08s. Two new readiness
+  reuse/invalidation/single-flight regressions failed before implementation.
+- Final physical timing trial: ep_0aedb22cd43b4592, Andrew, automated test mode,
+  no email/notifications,60s cap. Initial Run1793431341.097, final submission
+  click1341.430; first trajectory submission1357.514639 (16.418s after initial
+  Run), gateway acceptance1357.708440. Sampled live UI captures show actual
+  method-driven arm movement by18.183s after initial Run. Capture cadence0.5s;
+  host/local clock diagnostic midpoint offset0.653s with0.637s half-RTT bound.
+  Submission/acceptance are not counted as physical onset.
+- Joined journal1342.236 and matched jetson_leased1352.094 identify this
+  session's observed admission interval. These journal boundaries are diagnostic
+  proxies, not a claim of exact server queue-entry timestamps. Settled Home
+  feedback was reconciled at1352.746. No strict every-run numeric harness pass
+  is claimed from these sampled captures; previous owner acceptance remains.
+- Eight accepted packets/192confirmed waypoints,60.125s; normal time limit
+  parked/released the robot. Placement was not completed. Final status: disabled,
+  empty queue. No hardware checks or model/action cadence were removed.
+- Same-run58.5s replay played to its end withreadyState4/no error; native
+  midpoint seeking reached29.25s withreadyState4/no error:
+  https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_0aedb22cd43b4592&robot_id=robot-ba8413962083809c
+- Baseline first-submission latency28.415s after its final Run, CPU-only trial
+ 21.032s, final16.085s (16.418s including the initial identity-form Run click).
+  Different load/network/scene conditions prevent attributing all improvement
+  to CPU quota alone. Evidence: outputs/spotter/start-latency in the chat workspace.
+- Status remains13/14fulfilled (11verified,2owner accepted). Detailed persistent
+  wait-stage reporting remains required/open at the owner's lower priority.
