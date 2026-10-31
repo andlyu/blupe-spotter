@@ -111,7 +111,7 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   before joining.
 - [x] Run context includes the actual approach and confirmed runner identity;
   the website makes clear which method is running and whose run it is.
-- [ ] Policy/model tests initiated by a person retain that actual user's
+- [x] Policy/model tests initiated by a person retain that actual user's
   confirmed name as runner. Use available identity and editable name/email
   defaults; require the real name to be provided/confirmed if missing before
   testing or running. Do not substitute `Anonymous`, `Autonomous` or `Automated`
@@ -204,7 +204,9 @@ itself a paper/research-grounded exemption.
 |ep_4e824890fabf44b9|1793416374.021; join1793416383.448|Runner began1793416395.020409, already20.999s after Run;149confirmed waypoints. Entry1793416321.547.|>=20.999s before possible method motion; first onset not captured|Missed target; no exception|
 |ep_1e4acbab42d14ac9|1793417703.636; join1793417710.827|No packets at1793417725.963; actual method arm pose verified by1793417749.723. Entry1793417683.958.|No packets at22.327s; visible motion by46.087s|Missed target; no exception|
 |ep_f29b605d61a941a8|1793418325.081; join1793418325.196|First policy packet became ready1793418341.631020; entry1793418316.543.242confirmedwaypoints and actual arms visible.|>=16.550s before method motion; first visual onset not captured|Missed target; no exception|
-|ep_1d39af33903b4a6f|1793419228.350; join1793419228.433|First packet submitted1793419257.378070;338confirmedwaypoints and actual left-arm motion. Entry1793419218.791.|>=29.028s before method motion; first visual onset not captured|Missed target; no GPU-launch exception|
+|ep_1d39af33903b4a6f|1793419228.350; join1793419228.433|Initial trajectory_0 accepted1793419247.0320456;338confirmedwaypoints and actual left-arm motion. Entry1793419218.791.|>=18.682s before method motion; first visual onset not captured|Missed target; no GPU-launch exception|
+|ep_a904ffd2e14a461e|1793420687.332; join1793420687.410|Earliest retained packet submission1793420718.6892223 is not proven to be the first packet;337confirmedwaypoints and actual arms visible. Entry1793420524.123 includes preparation and browser recovery.|First motion onset not measured|Unverified15s target; no exception|
+|ep_df39c639fec04e59|1793423835.266; join1793423848.829|Runner started1793423860.492808; actual method-driven arm motion visible by1793423900.662. Entry1793423793.617.|>=25.227s before runner start; observed motion by65.396s; first onset not captured|Missed target; no exception|
 
 - Exception record (repeat for each affected run):
 - Exception category (GPU launch or paper/research-grounded):
@@ -427,7 +429,7 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
 - Site/backend: https://robohouse.spotter.54.209.185.15.sslip.io/
 - Queue/run/camera API: https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com
 - Station: robot-ba8413962083809c (Robo-house), left/right YAM arms only.
-- Method: Spotter + requested dreamlabs/dream-1-beta, managed OpenRouter Qwen3.8-27B.
+- Method: Spotter + requested dreamlabs/dream-1-beta, managed OpenRouter Qwen3-VL235B-A22B-Instruct (earlier trials used Qwen3.8-27B).
 - Test bounds: at most180seconds per newly initiated test; normal limited
   pick/place or repair motion, Stop, parking and lease release.
 - Recording/replay: retained camera API frames and episode metadata on the AWS
@@ -448,9 +450,77 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
   simulation trials, resets or privileged simulation success signals. MuJoCo is
   used only as a numerical FK/IK model for physical trajectories, not as a policy
   rollout environment. Offline camera/plan checks are labeled diagnostics.
-- Current review: **8/15 verified before the next new-contract test**. Human
-  identity defaults/confirmation, separate test-mode attribution under the new
-  contract, public source visibility, both15-second paths, detailed persistent
-  wait-stage verification and final all-requirements acceptance remain open.
+- Current review: **9/15 verified after the new-contract test**. The run retains
+  confirmed name Andrew; execution mode is separately recorded as automated test
+  in the task evidence. Human identity defaults/confirmation, public source
+  visibility, both15-second paths, detailed persistent wait-stage verification
+  and final all-requirements acceptance remain open.
   Simulation item is checked as explicitly not applicable. Physical task placement
   remains unverified successful. No GPU-launch exception claimed for warm runs.
+
+## Lift-intent and vision verification follow-up — October 30, 2026
+
+- Runtime18ff10c was physically tested in ep_a904ffd2e14a461e as Andrew;
+  execution mode was automated test, separately recorded. No email or
+  notifications.14accepted packets/337confirmed waypoints,180.986755s;
+  normal180s limit parked the robot and disabled torque. Placement failed.
+- That same episode has its own176s sampled physical recording,
+  SHA25686fbe1376e06b8796904c1fa8b12af9ff7006b53372fa6a1a1013f71a0f7b276.
+  Locally ready1793420880.7887242 versus runner end1793420879.4756432:
+  1.313081s after end. Website history selection auto-played0.0462→5.5888s,
+  played to176s, and native seeking reached88.1585s and14.08s with
+  readyState4/no media error. Playback screenshot and JSON are retained in
+  outputs/spotter/dream-validation-run-replay*.
+- The new VERIFY rule incorrectly treated an empty-hand clearance lift as a
+  grasp test. Typed lift intents now separate clearance from grasp_check and
+  survive schema validation into the measured-feedback checkpoint.
+- Recorded-case diagnostics preserved all rejected prompt/history/model variants.
+  An initial held-object fixture was excluded because its image occurred
+  mid-packet while the supplied measured receipt was older; raw results remain.
+  The corrected control uses settled feedback at1793419282.4974554 and
+  original images near1793419283.1, before the next packet at1793419285.557553.
+- Qwen3-VL235B-A22B-Instruct passed the three narrow held/missed/clearance
+  controls with two latest measured windows. This is an open-weight model
+  change on the same managed OpenRouter service, not a paper reproduction,
+  benchmark or reliability claim. Other tested candidates failed at least one
+  control and were not selected.
+- Commit2f20e422a191cfdadd02c7cf0dc0170bf95dd995 adds typed lift intent,
+  supported API parameters and the Robo-house model configuration. Four new
+  regressions failed before implementation.97tests/2subtests passed in10.40s.
+  The initial full-suite run exposed an unchanged replay fixture's1.2s
+  wall-clock dependence: base1/20failures, candidate0/20; a forced1.3s
+  first-frame delay reproduces it. One bounded full-suite rerun passed;
+  no assertion/timeout was relaxed. Physical verification of2f20e42 is recorded below.
+- All15requirements reviewed above; six remain open. No integration-complete
+  claim and no GPU-launch exception. No timed-out movement was retried.
+
+### Current deployed physical and owner-progress evidence
+
+- Runtime2f20e42, episodeep_df39c639fec04e59, confirmed runner Andrew,
+  execution mode automated test separately recorded; normal UI,180s cap.
+ 22accepted packets/501confirmed waypoints,180.697956s. Normal duration
+  limit parked the station and disabled torque. No pool_full, missing failed-move
+  hook or malformed-plan termination. The task was not completed.
+- The vision supervisor screened the policy but did not intervene during this
+  attempt, despite the task remaining unfinished. This run does not validate
+  physical repair or reliable placement with the new model. The three recorded
+  lift-control checks are narrow diagnostics only. No automatic motion retry.
+- Same-run replay175.5s/351frames, source API camera samples at2fps, pauses
+  retained. Ready1793424042.665982 versus runner end1793424041.1907642:
+ 1.475218s after end. SHA256aba765026c275c4a423c181c3794a96f5088ce8864ed6af9666a96507ed295a1.
+  Native browser auto-played to166.2253s and then175.5s,readyState4.
+  Native midpoint seek87.75s completed withreadyState4/no media error.
+- Replay link:
+  https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_df39c639fec04e59&robot_id=robot-ba8413962083809c
+- Progress investigation: the deployed pinned helper already accepts progress
+  events. An initial hypothesis based on a different checkout was rejected. The
+  public decision feed was empty because conversation sharing is disabled.
+  The owner display now reads their existing private GET /api/status and shows
+  Spotter activity below Run. No public sharing is enabled. Two regressions
+  failed before the fix;100tests/2subtests passed in12.55s after matching the actual terminal status shape, including
+  no-publication/read-only assertions and the unchanged YAM1 branch.
+- Source checklist remains9/15. Open: public source visibility/exception, human
+  name/email defaults/confirmation, uncoached entry-to-motion15s, every Run's
+  motion15s, full persistent wait-stage completion/stall verification and final
+  all-requirements acceptance. Physical task placement remains unsuccessful.
+  Frame sequences are timestamped observations, not continuous screen video.

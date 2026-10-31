@@ -94,16 +94,25 @@ Robo-house configuration:
 ```sh
 SPOTTER_VLM_API_STYLE=openrouter
 SPOTTER_VLM_ENDPOINT=https://openrouter.ai/api/v1
-SPOTTER_VLM_MODEL=qwen/qwen3.8-27b
+SPOTTER_VLM_MODEL=qwen/qwen3-vl-235b-a22b-instruct
 SPOTTER_VLM_KEY_FILE=/home/ubuntu/.config/openrouter/api-key
 ```
 
 Install the key as an owner-readable credential file outside the repository.
-The browser never receives it. OpenRouter requests use its normalized reasoning
-setting with reasoning disabled, JSON output, and routing that requires support
-for all requested parameters. Camera frames retain the same three-camera format.
-The selected model is Qwen3.8-27B; provider quantization/revision can differ from
-the pinned self-hosted FP8 deployment, so this is not an identical checkpoint run.
+The browser never receives it. Requests require JSON output and route only to
+providers supporting the requested parameters. This vision instruct checkpoint
+does not advertise reasoning control, so that parameter is omitted; models
+supporting it retain the disabled-reasoning setting. Camera inputs preserve all
+three views. Repair verification uses the latest two measured windows for this
+checkpoint; screening/judging retain their normal history.
+
+Robo-house now selects Qwen3-VL-235B-A22B-Instruct after narrow recorded checks
+of a held block, missed grasp and empty-hand clearance lift. The earlier
+Qwen3.8-27B variants confused these states. Explicit lift intent distinguishes
+clearance from a grasp check without claiming contact or holding. These checks
+are diagnostic evidence, not a benchmark or a reliable success-rate estimate.
+Provider quantization/revision can differ from the earlier self-hosted FP8
+supervisor; this is not an identical checkpoint reproduction.
 
 Before queue admission, the managed supervisor makes a small authenticated
 completion request (up to32output tokens) to verify model access and credits.

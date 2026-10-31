@@ -53,6 +53,50 @@ window.yamApplication = {
         }
       }, 3000);
     }
+    // The owner can inspect their existing private status even when they have
+    // not enabled the separate public-conversation publisher.
+    if (setup.base_provider === 'dream' && progress) {
+      const activity = document.createElement('div');
+      activity.id = 'spotterOwnActivity';
+      activity.hidden = true;
+      activity.setAttribute('role', 'status');
+      activity.setAttribute('aria-live', 'polite');
+      activity.style.marginTop = '.5rem';
+      const title = document.createElement('strong');
+      const note = document.createElement('p');
+      note.style.margin = '.25rem 0 0';
+      activity.replaceChildren(title, note);
+      progress.after(activity);
+      let first = true, watching = false, fetching = false;
+      async function refreshOwnActivity() {
+        const stopping = /stop run/i.test(document.getElementById('quickRun')?.textContent || '');
+        if (fetching || (!first && !watching && !stopping)) return;
+        first = false;
+        fetching = true;
+        try {
+          const response = await fetch('/api/status', {cache: 'no-store'});
+          if (!response.ok) throw new Error('Activity unavailable');
+          const state = await response.json();
+          const events = state.interactions?.events || [];
+          const latest = [...events].reverse().find(event =>
+            event.kind === 'model_progress' && event.details?.spotter_phase);
+          watching = ['preparing', 'queued', 'running'].includes(state.status);
+          const ownSpotterRun = state.provider?.provider === 'spotter' || state.run_configuration?.provider === 'spotter';
+          activity.hidden = !ownSpotterRun || !state.attempt_id || !latest;
+          if (activity.hidden) return;
+          const ending = {completed: 'Finished', failed: 'Failed', stopped: 'Stopped',
+            safety_aborted: 'Stopped', timed_out: 'Stopped', cancelled: 'Stopped'}[state.status] || 'Ended';
+          title.textContent = watching ? 'Spotter activity' : 'Last Spotter run · ' + ending;
+          note.textContent = String(latest.message || '').slice(0, 2000);
+        } catch {
+          if (!activity.hidden) title.textContent = 'Spotter activity unavailable · Reconnecting…';
+        } finally {
+          fetching = false;
+        }
+      }
+      await refreshOwnActivity();
+      setInterval(refreshOwnActivity, 2000);
+    }
     document.getElementById('openCodexInstructions').hidden = true;
     for (const id of ['runAstra', 'runClaude', 'runGroot']) document.getElementById(id).hidden = true;
   }
