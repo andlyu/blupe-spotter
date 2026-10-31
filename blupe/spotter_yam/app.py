@@ -230,7 +230,8 @@ class SpotterApp(HostedRunner):
         page = page.replace('<title>BluPe · Run a policy</title>', '<title>Spotter on Blupe · ' + self.station_name + '</title>')
         page = page.replace('<!-- application-head -->',
                             '<link rel="stylesheet" href="/spotter/site.css"><script src="/spotter/site.js" defer></script>')
-        page = page.replace('<span class="consoleProduct">Playground</span>', '<span class="consoleProduct">Spotter</span>')
+        page = page.replace('<span class="consoleWordmark">BluPe</span>', '<span class="consoleWordmark">Spotter</span>')
+        page = page.replace('<span class="consoleProduct">Playground</span>', '<span class="consoleProduct">BluPe</span>')
         start = page.index('  <p class="playgroundIntro">')
         end = page.index('</p>', start) + 4
         page = page[:start] + ('  <p class="playgroundIntro">' + self.base_label + ''' moves. Spotter watches, repairs failures, and hands control back.
