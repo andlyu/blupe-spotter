@@ -56,6 +56,19 @@ window.yamApplication = {
     // The owner can inspect their existing private status even when they have
     // not enabled the separate public-conversation publisher.
     if (setup.base_provider === 'dream' && progress) {
+      const runnerName = document.getElementById('runnerName');
+      const rememberName = () => {
+        try {
+          const name = runnerName.value.trim();
+          if (name) localStorage.setItem('spotter.runnerName', name);
+          else localStorage.removeItem('spotter.runnerName');
+        } catch { /* Storage can be unavailable in a private browser. */ }
+      };
+      try {
+        if (!runnerName.value.trim()) runnerName.value = localStorage.getItem('spotter.runnerName') || '';
+      } catch { /* An owned run can still provide the confirmed name below. */ }
+      runnerName.addEventListener('input', rememberName);
+      let identityRestored = false;
       const activity = document.createElement('div');
       activity.id = 'spotterOwnActivity';
       activity.hidden = true;
@@ -77,6 +90,13 @@ window.yamApplication = {
           const response = await fetch('/api/status', {cache: 'no-store'});
           if (!response.ok) throw new Error('Activity unavailable');
           const state = await response.json();
+          if (!identityRestored) {
+            identityRestored = true;
+            if (!runnerName.value.trim() && typeof state.runner_name === 'string' && state.runner_name.trim()) {
+              runnerName.value = state.runner_name.trim();
+              rememberName();
+            }
+          }
           const events = state.interactions?.events || [];
           const latest = [...events].reverse().find(event =>
             event.kind === 'model_progress' && event.details?.spotter_phase);
