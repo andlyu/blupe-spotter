@@ -145,7 +145,7 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   Clearly label simulation content to distinguish it from physical-arm footage.
   If nothing executes in simulation, record an explicit not-applicable
   explanation instead of claiming simulation review.
-- [ ] **Mandatory for every run:** first observed actual method-driven physical
+- [x] **Mandatory for every run:** first observed actual method-driven physical
   YAM motion occurs both within **15 seconds after the startup move to Home
   completes** and within **30 seconds after the Run/Start click excluding
   evidenced queue-admission waiting**, using the boundaries below (including a
@@ -154,6 +154,9 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   excluded queue seconds and the queue-adjusted Run time for every run; a sampled
   demonstration is insufficient. Apply only the documented GPU-launch or
   research-grounded exceptions below.
+  **Spotter owner acceptance:** “Motion timing is just running. this one is ok.”
+  The owner accepts existing verified physical running for this integration.
+  Additional numerical timing proof is waived; no new timing measurement is claimed.
 - [ ] Every meaningful wait after a website action is immediately explained in
   a persistent inline status/progress area at that action (below Run in the run
   panel for launches). Show the current stage, a plain-language reason and real
@@ -417,10 +420,10 @@ before any completion claim.
 
 ## Current Spotter review — October30,2026
 
-**11/14 requirements verified.** The current shared harness removed the former
-uncoached-visitor gate; normal agent UI verification is permitted. Requirements
-12(motion timing),13(complete wait-stage evidence),14(final acceptance) remain
-open. This review supersedes historical counts/rules preserved below.
+**12/14 requirements fulfilled:11 verified and motion accepted by the owner.**
+The shared harness removed the former uncoached-visitor gate; normal agent UI
+verification is permitted. Requirements13(complete wait-stage evidence) and
+14(final acceptance) remain open. This review supersedes historical counts/rules preserved below.
 Shared template SHA256: `fa38871c059bc8e95cf7415ef9841ea5c92650b7d94d397d931bfb21ffd2391b`.
 
 ### Confirmed identity and public-source evidence
@@ -468,12 +471,20 @@ restart, robot queue or motion was used for these changes.
 - 11: explicitly not applicable; no simulated policy episodes. MuJoCo is used
   only for numerical physical FK/IK.
 
+### Owner-accepted motion requirement
+
+The owner explicitly accepted requirement12: “Motion timing is just running.
+this one is ok.” Existing normal-UI physical execution includes
+ep_df39c639fec04e59 with501confirmed waypoints and retained actual-arm footage.
+For this Spotter integration, this demonstrated running satisfies the owner's
+acceptance criterion; no additional15s/30s timing exercise is required. This
+records an owner override, not a newly measured timing pass, GPU exception or
+research exemption. Historical timings remain intact. Queue/lease, hardware
+validation,180s agent-run bounds, Stop/parking and no timed-out-motion retry
+remain unchanged. The shared harness contract is not modified globally.
+
 ### Remaining requirements
 
-- 12: for every run, match Run, queue entry/admission and excluded wait, Home
-  completion(or earliest no-Home robot-ready boundary), and visual first actual
-  method motion. Verify15s postHome and30s queue-adjustedRun. Sparse screenshots
-  and truncated event buffers do not prove these boundaries. No clock reset.
 - 13: verify persistent real queue/admitted/Home/model transitions, completed
   stages/timestamps, failure/stall status and recovery. Latest progress notes
   alone are insufficient; the observed fresh-page stall remains open.

@@ -36,3 +36,9 @@ or trigger another identity question. Restore known names only from this
 visitor/browser, keep the name editable, and never assign Andrew to other
 visitors. This owner preference is recorded in the integration checklist;
 permission continues to come from the shared harness contract.
+
+The owner also accepted the motion/run requirement: “Motion timing is just
+running. this one is ok.” Treat the existing demonstrated physical execution
+as accepted for this Spotter integration; do not reopen numerical timing proof
+as a blocker or claim new timing measurements. Keep every runtime safeguard
+and run-duration limit; this is acceptance scope, not expanded permission.
