@@ -2,6 +2,7 @@
 from copy import deepcopy
 import math
 import time
+import numpy as np
 
 from remote_yam.cameras import CameraFrame
 
@@ -10,8 +11,11 @@ class RepairGrounding:
     def __init__(self, source, validate_report):
         self.source, self.validate_report = source, validate_report
         self.snapshot = None
+        self.pixels, self.last_refresh = {}, None
+        self.cancelled = lambda: False
 
     def capture(self, task, history, supervisor, cancelled):
+        self.cancelled, self.last_refresh = cancelled, None
         for attempt in range(3):
             snapshot = self.source.capture(stopped=True, cancelled=cancelled)
             if snapshot.metadata['captured_at'] > history[-1]['measured']['observed_at']:
@@ -34,7 +38,7 @@ class RepairGrounding:
         selected = result.get('points')
         if not isinstance(selected, list) or len(selected) > 4:
             raise ValueError('Repair grounding needs at most four visible points')
-        points, pixels = {}, {}
+        points, pixels, omitted = {}, {}, []
         h, w = snapshot.rgb.shape[:2]
         for point in selected:
             if not isinstance(point, dict) or set(point) != {'name', 'point_1000'}:
@@ -51,22 +55,26 @@ class RepairGrounding:
             try:
                 measurements = {arm: snapshot.measure(*pixel, arm=arm)
                                 for arm in ('left', 'right')}
-            except ValueError:
+            except ValueError as exc:
+                omitted.append({'name': name, 'pixel': pixel, 'reason': str(exc)[:200]})
                 continue  # Missing/noisy pixels never receive invented depth.
             points[name] = {arm: receipt['point_base_m'] for arm, receipt in measurements.items()}
             pixels[name] = pixel
+        self.pixels = pixels
         context = dict(image_size=[w, h], camera='top',
                        captured_at=snapshot.metadata['captured_at'],
                        calibration_id=snapshot.metadata['calibration_id'],
                        quality=snapshot.calibration['quality'], points=deepcopy(points), pixels=pixels,
-                       frame=latest['frames'][0].summary(),
+                       frame=latest['frames'][0].summary(), omitted=omitted,
                        meaning='Measured surface points in each named arm base, not gripper targets.')
         return history, context, points
 
     def resolve(self, result, points):
-        if self.snapshot is None or self.snapshot.age() > 5:
-            raise ValueError('Repair RGB-D aged during planning; no repair motion proposed')
         result = deepcopy(result)
+        referenced = {step.get('point') for step in result.get('steps', [])
+                      if step.get('op') == 'move_to_point' and isinstance(step.get('point'), str)}
+        if referenced and (self.snapshot is None or self.snapshot.age() > 5):
+            self._refresh(points, referenced)
         for step in result.get('steps', []):
             if step.get('op') == 'move_to_point':
                 if (set(step) != {'op', 'arm', 'point', 'offset'}
@@ -84,6 +92,36 @@ class RepairGrounding:
                          or step['dxyz'][:2] != [0, 0])):
                 raise ValueError('Horizontal repair motion requires a measured point reference')
         return result
+
+    def _refresh(self, points, referenced):
+        if self.snapshot is None or not referenced.issubset(points):
+            raise ValueError('Repair target requires a measured point')
+        old = self.snapshot
+        fresh = self.source.capture(stopped=True, cancelled=self.cancelled)
+        self.validate_report(fresh.calibration)
+        if fresh.age() > 5 or fresh.metadata['captured_at'] <= old.metadata['captured_at']:
+            raise ValueError('Repair RGB-D aged during planning; fresh capture unavailable')
+        if (fresh.metadata['calibration_id'] != old.metadata['calibration_id']
+                or fresh.rgb.shape != old.rgb.shape):
+            raise ValueError('Repair calibration or image geometry changed during planning')
+        measured = {}
+        for name in referenced:
+            u, v = self.pixels[name]
+            before = old.rgb[max(0,v-3):v+4, max(0,u-3):u+4].astype('int16')
+            after = fresh.rgb[max(0,v-3):v+4, max(0,u-3):u+4].astype('int16')
+            candidate = {arm: fresh.measure(u, v, arm=arm)['point_base_m'] for arm in ('left', 'right')}
+            if (float(np.median(np.abs(before-after))) > 20
+                    or any(np.linalg.norm(np.asarray(candidate[arm])-points[name][arm]) > .01
+                           for arm in ('left', 'right'))):
+                raise ValueError('Selected surface changed during planning; no repair motion proposed')
+            measured[name] = candidate
+        if self.cancelled(): raise RuntimeError('Spotter grounding cancelled')
+        points.update(measured)
+        self.snapshot = fresh
+        self.last_refresh = dict(captured_at=fresh.metadata['captured_at'],
+            calibration_id=fresh.metadata['calibration_id'], points=measured,
+            frame=CameraFrame('top', fresh.image(), time.time(),
+                              source_captured_at=fresh.metadata['captured_at']).summary())
 
     def close(self):
         self.source.connection.close()

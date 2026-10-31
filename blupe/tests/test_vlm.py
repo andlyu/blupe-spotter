@@ -46,6 +46,15 @@ def provider(content, status=200):
 
 
 class ManagedSupervisorTests(unittest.TestCase):
+    def test_point_selection_sees_only_the_paired_top_image(self):
+        with provider({'points': []}) as (endpoint, calls):
+            supervisor = VisionSupervisor(endpoint, 'qwen/qwen3.8-27b', 'test-key', api_style='openrouter')
+            frames = [SimpleNamespace(name=name, jpeg=name.encode()) for name in ('top', 'left', 'right')]
+            supervisor.locate('move object', [{'frames': frames}])
+            images = [item for item in calls[0][3]['messages'][1]['content'] if item['type'] == 'image_url']
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0]['image_url']['url'], 'data:image/jpeg;base64,dG9w')
+
     def test_openrouter_vision_request_preserves_cameras_and_enforces_parameters(self):
         with provider({'flag': False, 'risk': 0, 'why': 'progress'}) as (endpoint, calls):
             supervisor = VisionSupervisor(endpoint, 'qwen/qwen3.8-27b', 'test-key', api_style='openrouter')

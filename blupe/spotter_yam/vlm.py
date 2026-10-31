@@ -214,7 +214,11 @@ class VisionSupervisor:
         return self.call(REPAIR, task, history, context=context)
 
     def locate(self, task, history):
-        return self.call(LOCATE, task, history, max_tokens=600)
+        latest = history[-1]
+        frames = [frame for frame in latest['frames'] if frame.name == 'top']
+        if len(frames) != 1:
+            raise ValueError('Point selection requires exactly one paired top image')
+        return self.call(LOCATE, task, [{**latest, 'frames': frames}], max_tokens=600)
 
     def verify(self, task, history, context):
         result = self.call(VERIFY, task, history, context=context)

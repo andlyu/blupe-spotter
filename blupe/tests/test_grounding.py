@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import numpy as np
 import pytest
 
 from spotter_yam.grounding import RepairGrounding
@@ -7,7 +8,7 @@ from spotter_yam.grounding import RepairGrounding
 class Snapshot:
     metadata = {'captured_at': 101., 'calibration_id': 'fit', 'camera': 'top'}
     calibration = {'quality': {'status': 'experimental_requires_fresh_validation'}}
-    rgb = SimpleNamespace(shape=(480, 640, 3))
+    rgb = np.zeros((480, 640, 3), dtype=np.uint8)
     def image(self): return b'paired-native-image'
     def age(self): return .5
     def measure(self, u, v, *, arm):
@@ -67,4 +68,47 @@ def test_grounded_plan_ages_out_and_cannot_be_reused_after_slow_inference():
     value, _, _, points = ground()
     value.snapshot.age = lambda: 6.
     with pytest.raises(ValueError, match='aged'):
-        value.resolve({'steps': [{'op': 'policy'}]}, points)
+        value.resolve({'steps': [{'op': 'move_to_point', 'arm': 'left', 'point': 'block',
+                                 'offset': [0, 0, .06]}]}, points)
+
+
+def test_policy_handback_needs_no_expired_geometric_target():
+    value, _, _, points = ground()
+    value.snapshot.age = lambda: 6.
+    assert value.resolve({'steps': [{'op': 'policy'}]}, points)['steps'] == [{'op': 'policy'}]
+
+
+def test_slow_plan_refreshes_and_checks_the_selected_surface_before_motion():
+    value, _, _, points = ground()
+    value.snapshot.age = lambda: 6.
+    fresh = Snapshot(); fresh.metadata = {**fresh.metadata, 'captured_at': 102.}
+    value.source.capture = lambda **kw: fresh
+    result = value.resolve({'steps': [{'op': 'move_to_point', 'arm': 'right',
+        'point': 'block', 'offset': [0, 0, .06]}]}, points)
+    assert result['steps'][0]['xyz'] == pytest.approx([.49, .41, .11])
+    assert value.snapshot is fresh
+
+
+def test_changed_scene_during_planning_does_not_authorize_the_old_target():
+    value, _, _, points = ground()
+    value.snapshot.age = lambda: 6.
+    fresh = Snapshot(); fresh.metadata = {**fresh.metadata, 'captured_at': 102.}
+    fresh.rgb = np.full((480, 640, 3), 255, dtype=np.uint8)
+    value.source.capture = lambda **kw: fresh
+    with pytest.raises(ValueError, match='changed'):
+        value.resolve({'steps': [{'op': 'move_to_point', 'arm': 'right',
+            'point': 'block', 'offset': [0, 0, .06]}]}, points)
+
+
+@pytest.mark.parametrize('change', ['depth', 'calibration'])
+def test_changed_geometry_cannot_pass_refresh_using_unchanged_rgb(change):
+    value, _, _, points = ground()
+    value.snapshot.age = lambda: 6.
+    fresh = Snapshot(); fresh.metadata = {**fresh.metadata, 'captured_at': 102.}
+    if change == 'calibration': fresh.metadata['calibration_id'] = 'different-fit'
+    else:
+        fresh.measure = lambda *a, arm: {'point_base_m': [.6, 0, .1]}
+    value.source.capture = lambda **kw: fresh
+    with pytest.raises(ValueError, match='changed'):
+        value.resolve({'steps': [{'op': 'move_to_point', 'arm': 'left',
+            'point': 'block', 'offset': [0, 0, .06]}]}, points)

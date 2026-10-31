@@ -120,6 +120,27 @@ For self-hosting, keep `SPOTTER_VLM_API_STYLE=vllm` (the default); its model
 discovery/warmup behavior remains available. Both providers fail closed if
 supervision fails during execution.
 
+### Measured Robo-house repairs
+
+Robo-house repairs use the shared runner's `ApiDepth` helper. Qwen selects visible
+points in a fresh paired overhead RGB-D image on an explicit 0–1000 coordinate
+grid; the adapter converts them to native pixels and measures each point in both
+arm bases. Repair plans reference those measured points with bounded approach or
+grasp offsets. Raw absolute XYZ and ungrounded horizontal nudges are rejected.
+Missing/noisy depth is never filled with a model guess, and depth older than five
+seconds cannot authorize a repair. After slow planning the adapter requests a new
+paired capture, checks the selected surfaces' color and measured position for
+change, and remeasures targets before dispatch. Point selection sees only the
+paired overhead image; repair supervision retains all three camera views.
+The normal IK, workspace and gateway checks
+remain in force. YAM1 keeps its existing repair path.
+
+The API marks Robo-house calibration `experimental_requires_fresh_validation`.
+A measured surface point is not a validated grasp pose or a contact sensor. The
+planner receives that quality report; physical task success must still be checked
+in the live scene and recording. Coordinate handling follows the normalized
+grounding convention described in the [Qwen3-VL report](https://arxiv.org/abs/2511.21631).
+
 Dream-1 retains its live 5 Hz three-camera history during policy execution.
 Before handback after a Spotter repair, the adapter resets the SDK episode and
 discards prior camera history and action-smoothing anchors. It then requests a

@@ -184,6 +184,9 @@ class SpotterAdapter:
         result = self.supervisor.repair(prompt, history, {**context, 'bounds': bounds})
         if self.grounding:
             result = self.grounding.resolve(result, points)
+            if getattr(self.grounding, 'last_refresh', None):
+                self._event('grounding', 'Selected surfaces remeasured after planning; scene unchanged',
+                            grounding_refresh=self.grounding.last_refresh)
         self._check_cancelled()
         self._repair = deque(validate_plan(result))
         self._repair_context = {'why': str(result.get('why', ''))[:500],
