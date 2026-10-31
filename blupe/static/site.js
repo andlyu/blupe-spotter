@@ -19,14 +19,14 @@ window.yamApplication = {
     const progress = document.getElementById('message');
     const status = document.getElementById('status');
     function showSpotterProgress() {
-      if (picker.value !== 'spotter' || !progress || !status) return;
+      if (setup.base_provider !== 'dream' || picker.value !== 'spotter' || !progress || !status) return;
       const text = progress.textContent;
       const starting = 'Starting Spotter and joining the robot queue…';
       if (text !== starting && !/^(Preparing the model GPU|Preparing before the robot queue · warming |In the robot queue · warming )/.test(text)) return;
       const next = status.textContent.trim() === 'running' ? '' : starting;
       if (progress.textContent !== next) progress.textContent = next;
     }
-    if (progress && status) {
+    if (setup.base_provider === 'dream' && progress && status) {
       const observer = new MutationObserver(showSpotterProgress);
       observer.observe(progress, {childList: true, subtree: true});
       observer.observe(status, {childList: true, subtree: true});
