@@ -81,6 +81,7 @@ class SpotterAdapter:
         self._execution_failure = None
         self._interventions = 0
         self._rounds = 0
+        self._repair_plans = deque(maxlen=max_plan_rounds)
         self._episode = None
         self._closed = False
         self._prepared = False
@@ -181,20 +182,48 @@ class SpotterAdapter:
             history, measured, points = self.grounding.capture(prompt, history, self.supervisor, self.cancelled)
             context = {**context, 'grounding': measured}
             self._event('grounding', 'Repair targets measured from paired overhead RGB-D', grounding=measured)
-        result = self.supervisor.repair(prompt, history, {**context, 'bounds': bounds})
-        if self.grounding:
-            result = self.grounding.resolve(result, points)
-            if getattr(self.grounding, 'last_refresh', None):
-                self._event('grounding', 'Selected surfaces remeasured after planning; scene unchanged',
-                            grounding_refresh=self.grounding.last_refresh)
+        context = {**context, 'bounds': bounds, 'previous_repairs': deepcopy(list(self._repair_plans)),
+                   'remaining_plan_rounds': self.max_plan_rounds-self._rounds}
+        for attempt in range(2):
+            result = self.supervisor.repair(prompt, history, context)
+            if self.grounding:
+                result = self.grounding.resolve(result, points)
+                if getattr(self.grounding, 'last_refresh', None):
+                    self._event('grounding', 'Selected surfaces remeasured after planning; scene unchanged',
+                                grounding_refresh=self.grounding.last_refresh)
+            steps = validate_plan(result)
+            if not context.get('failed_policy_handback') or self._restages(steps, history[-1]['cartesian']):
+                break
+            self._check_cancelled()
+            context = {**context, 'planner_feedback':
+                'The previous policy handback failed. Actual restaging is required before another '
+                'handback: use a measured positional or orientation correction, not only gripper '
+                'open/close or an unchanged policy step. No rejected steps were executed.'}
+            self._event('repair_validation', context['planner_feedback'])
+        else:
+            raise RuntimeError('Spotter repair did not propose restaging after a failed policy handback')
         self._check_cancelled()
-        self._repair = deque(validate_plan(result))
+        self._repair = deque(steps)
         self._repair_context = {'why': str(result.get('why', ''))[:500],
-                                'expectation': result['expectation'][:2000]}
+                                'expectation': result['expectation'][:2000], 'steps': deepcopy(steps)}
+        self._repair_plans.append({**deepcopy(self._repair_context), 'status': 'planned'})
         intervention = getattr(self.base, 'supervisor_intervention', None)
         if callable(intervention): intervention()
         self._rounds += 1
         self._event('repair', self._repair_context['why'], expectation=self._repair_context['expectation'])
+
+    @staticmethod
+    def _restages(steps, current):
+        for step in steps:
+            op, arm = step['op'], step.get('arm')
+            if op == 'nudge' and math.sqrt(sum(v*v for v in step['dxyz'])) >= .01: return True
+            if op == 'lift' and abs(step['dz']) >= .01: return True
+            if op == 'move_to' and math.sqrt(sum((v-current[arm+'_'+axis])**2
+                    for axis, v in zip('xyz', step['xyz']))) >= .01: return True
+            if op == 'rotate':
+                delta = step['yaw']-current[arm+'_yaw']
+                if abs(math.atan2(math.sin(delta), math.cos(delta))) >= .05: return True
+        return False
 
     def _primitive(self, step, observation, first_step_id):
         _, state, _ = self.geometry.observe(observation)
@@ -226,7 +255,8 @@ class SpotterAdapter:
             self._post_policy_expectation = None
             self._event('verify', verdict.get('why', ''), verdict=verdict['verdict'])
             if verdict['verdict'] == 'success': raise PolicyComplete('Spotter visually reports completion')
-            if verdict['verdict'] == 'replan': self._plan(prompt, {**context, 'verification': verdict})
+            if verdict['verdict'] == 'replan':
+                self._plan(prompt, {**context, 'verification': verdict, 'failed_policy_handback': True})
         if self._repair_context and self._verify:
             verdict = self.supervisor.verify(prompt, list(self.history), self._repair_context)
             self._check_cancelled()
@@ -247,6 +277,7 @@ class SpotterAdapter:
                     raise RuntimeError('Spotter intervention budget reached')
                 self._interventions += 1
                 self._rounds = 0
+                self._repair_plans.clear()
                 self._plan(prompt, {'detected_failure': result, 'replan_from_current_state': True})
         while self._repair:
             step = self._repair.popleft()
@@ -255,6 +286,7 @@ class SpotterAdapter:
                 self._post_policy_expectation = self._repair_context
                 self._repair_context = None
                 self._checked = self._chunks
+                if self._repair_plans: self._repair_plans[-1]['status'] = 'handed_back'
                 self._event('handoff', 'Returning control to the policy; Spotter keeps watching')
                 break
             try:
@@ -267,6 +299,7 @@ class SpotterAdapter:
             self._post_policy_expectation = self._repair_context
             self._repair_context = None
             self._checked = self._chunks
+            if self._repair_plans: self._repair_plans[-1]['status'] = 'handed_back'
             self._event('handoff', 'Repair segment finished; returning to the policy')
         if self._future is None and self._checked < self._chunks:
             self._start_review(prompt)
@@ -320,6 +353,8 @@ class SpotterAdapter:
                 raise RuntimeError('Spotter base policy cannot recover from failed moves')
             failed(code, message, waypoint_count, feedback=feedback)
         elif self._last_kind == 'repair':
+            if self._repair_plans:
+                self._repair_plans[-1].update(status='failed', failure_code=code)
             # Do not run the rest of a primitive plan after a partial movement,
             # or treat its expectation as verified. Replan at the next measured
             # snapshot, using the existing finite plan budget.

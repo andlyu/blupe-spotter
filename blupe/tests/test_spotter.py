@@ -229,6 +229,49 @@ def test_unmet_expectation_replans_from_fresh_feedback(adapter):
     assert adapter.geometry.targets[0][0]['left_x']==pytest.approx(.38)
 
 
+def test_failed_handback_requires_restaging_before_another_policy_chunk(adapter):
+    adapter._last_kind = 'policy'
+    adapter._post_policy_expectation = {'expectation': 'grasp block after releasing marker'}
+    adapter.supervisor.verify = lambda *a: dict(verdict='replan', why='same wrong object again')
+    default = adapter.supervisor.repair
+    def repair(task, history, context):
+        if not adapter.supervisor.plans:
+            adapter.supervisor.plans.append((history, context))
+            return dict(expectation='try again unchanged', steps=[dict(op='policy')])
+        return default(task, history, context)
+    adapter.supervisor.repair = repair
+    adapter.build_trajectory('move block', observation(8), 8)
+    assert len(adapter.supervisor.plans) == 2
+    assert adapter.supervisor.plans[-1][1]['failed_policy_handback'] is True
+    assert 'restaging' in adapter.supervisor.plans[-1][1]['planner_feedback']
+    assert adapter.geometry.targets[-1][0]['left_x'] == pytest.approx(.28)
+    assert not adapter.base.calls and adapter._rounds == 1
+
+
+def test_repeated_invalid_handbacks_stop_without_base_or_repair_motion(adapter):
+    adapter._last_kind = 'policy'
+    adapter._post_policy_expectation = {'expectation': 'grasp block'}
+    adapter.supervisor.verify = lambda *a: dict(verdict='replan', why='wrong object again')
+    def repair(task, history, context):
+        adapter.supervisor.plans.append((history, context))
+        return dict(expectation='unchanged', steps=[dict(op='gripper', arm='right', value=1), dict(op='policy')])
+    adapter.supervisor.repair = repair
+    with pytest.raises(RuntimeError, match='restaging'):
+        adapter.build_trajectory('move block', observation(8), 8)
+    assert len(adapter.supervisor.plans) == 2
+    assert not adapter.base.calls and not adapter.geometry.targets
+
+
+def test_repair_context_retains_planned_steps_and_actual_handback(adapter):
+    adapter._chunks = 2
+    adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
+    adapter.build_trajectory('move block', observation(8), 8)
+    adapter.trajectory_completed(observation(9), 1)
+    adapter.build_trajectory('move block', observation(9), 9)
+    assert adapter._post_policy_expectation['steps'][0]['op'] == 'nudge'
+    assert adapter._repair_plans[-1]['status'] == 'handed_back'
+
+
 def test_episode_switch_and_wrong_robot_rejected_before_policy(adapter):
     adapter.build_trajectory('move',observation(),0)
     with pytest.raises(ValueError,match='episodes'):

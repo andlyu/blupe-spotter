@@ -135,6 +135,14 @@ paired overhead image; repair supervision retains all three camera views.
 The normal IK, workspace and gateway checks
 remain in force. YAM1 keeps its existing repair path.
 
+After a policy handback is visually verified to have failed, another handback
+requires a positional or orientation correction. The planner sees prior repair
+steps and their handback/failure status. Up to two proposals may correct an invalid
+unchanged plan; rejected proposals send no motion and do not add physical repair
+rounds. The three-round physical repair limit is unchanged. This port-specific
+progress guard is related to upstream's optional Spotter-H earned-handback rule;
+it is not a claim that upstream enables that optional rule by default.
+
 The API marks Robo-house calibration `experimental_requires_fresh_validation`.
 A measured surface point is not a validated grasp pose or a contact sensor. The
 planner receives that quality report; physical task success must still be checked

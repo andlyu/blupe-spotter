@@ -86,6 +86,17 @@ to verify before transport. Do not emit raw move_to or horizontal nudge when
 grounding is supplied. Lift, rotate, gripper and policy hand-back remain allowed.
 If the measurements/bounds do not support a repair, hand back. Experimental
 calibration is not a contact oracle; preserve its uncertainty.'''
+REPAIR += '''
+Context.previous_repairs records planned steps and whether each reached a policy
+handback or failed. Use this causal history with the current visual evidence.
+When failed_policy_handback is true, the prior handback has already been tested
+and failed: another unchanged handback, or only opening the gripper again, does
+not repair that failure. Re-stage the arm at a measured task-relevant approach,
+or correct its orientation, before trying the policy again. A manual close is
+available after a failed handback if visual evidence supports a grounded grasp.
+Do not spend the remaining rounds repeating the same ineffective release and
+handback. Keep inactive arms at their measured state and verify a lift before
+transport. If no valid repair is supported, explain the limitation explicitly.'''
 
 VERIFY = '''Verify the last Spotter repair using fresh CURRENT images and measured
 state against the recorded expectation. Return JSON {"verdict":"verified"|
