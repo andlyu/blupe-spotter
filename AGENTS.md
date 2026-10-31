@@ -42,3 +42,8 @@ running. this one is ok.” Treat the existing demonstrated physical execution
 as accepted for this Spotter integration; do not reopen numerical timing proof
 as a blocker or claim new timing measurements. Keep every runtime safeguard
 and run-duration limit; this is acceptance scope, not expanded permission.
+
+The owner quoted the final deployed-UI acceptance item and said “Yes, that's
+ok.” Treat that final-UI item as owner-accepted on existing run/replay evidence,
+without claiming a new physical run. Keep progress reporting open until it is
+verified; do not label the entire integration complete from this acceptance alone.

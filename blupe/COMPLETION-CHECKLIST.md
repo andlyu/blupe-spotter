@@ -162,11 +162,15 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   panel for launches). Show the current stage, a plain-language reason and real
   stage completion, with honest failure/stall status and available recovery.
   Verify the detailed wait-stage behavior below.
-- [ ] Before marking the integration complete or reporting it done, open the
+- [x] Before marking the integration complete or reporting it done, open the
   deployed website and perform a final end-to-end physical YAM run through its
   normal user interface. Verify every completion requirement against that
   deployment and record evidence; unmet or unverified requirements block
   completion.
+  **Spotter owner acceptance:** the owner quoted this final-acceptance item and
+  said “Yes, that's ok.” Existing deployed UI/run/replay evidence is accepted;
+  no newly performed final run is claimed. The remaining progress-reporting
+  requirement is still open.
 
 ## Verify normal UI execution
 
@@ -420,10 +424,10 @@ before any completion claim.
 
 ## Current Spotter review — October30,2026
 
-**12/14 requirements fulfilled:11 verified and motion accepted by the owner.**
+**13/14 requirements fulfilled:11 verified and2 owner-accepted.**
 The shared harness removed the former uncoached-visitor gate; normal agent UI
-verification is permitted. Requirements13(complete wait-stage evidence) and
-14(final acceptance) remain open. This review supersedes historical counts/rules preserved below.
+verification is permitted. Only requirement13(complete wait-stage evidence)
+remains open. Motion and final-UI acceptance are accepted by the owner. This review supersedes historical counts/rules preserved below.
 Shared template SHA256: `fa38871c059bc8e95cf7415ef9841ea5c92650b7d94d397d931bfb21ffd2391b`.
 
 ### Confirmed identity and public-source evidence
@@ -483,13 +487,19 @@ research exemption. Historical timings remain intact. Queue/lease, hardware
 validation,180s agent-run bounds, Stop/parking and no timed-out-motion retry
 remain unchanged. The shared harness contract is not modified globally.
 
+### Owner-accepted final UI acceptance
+
+The owner quoted the final deployed-UI acceptance item and said “Yes, that's
+ok.” Record requirement14 as accepted on the existing deployed normal-UI
+physical execution and retained replay evidence. No new final physical run or
+complete all-requirements re-verification is claimed. Progress-reporting
+requirement13 remains open, so this is not an overall integration-complete claim.
+
 ### Remaining requirements
 
 - 13: verify persistent real queue/admitted/Home/model transitions, completed
   stages/timestamps, failure/stall status and recovery. Latest progress notes
   alone are insufficient; the observed fresh-page stall remains open.
-- 14: final normal-UI physical run validating every current requirement after
-  gaps close. No integration-complete claim.
 
 Identity DOM/syntax checks pass. Full suite:101passed/2subtests plus one unchanged
 load-dependent1.2s replay-fixture failure(17.26s; one bounded retry16.95s). No
