@@ -60,6 +60,7 @@ class SpotterApp(HostedRunner):
                               or self.vlm_key_file and Path(self.vlm_key_file).is_file()
                               and secret_file(self.vlm_key_file)))
         self.configured = bool(base_configured and vlm_configured)
+        self.camera_origin_value = kwargs.get('camera_origin', API).rstrip('/')
         super().__init__(**kwargs)
         self.local_replays = ReplayStore(self.settings.get('replay_root'))
         self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id, self.local_replays)
@@ -186,9 +187,15 @@ class SpotterApp(HostedRunner):
             with request.urlopen(self.camera_origin_value + '/v1/robots/' + self.robot_id + '/calibration', timeout=10) as response:
                 report = json.loads(response.read(4 * 1024 * 1024))
             workspace.validate_report(report)
+        grounding = None
+        if self.base_provider == 'dream':
+            from remote_yam.api_depth import ApiDepth
+            from .grounding import RepairGrounding
+            grounding = RepairGrounding(ApiDepth(self.camera_origin_value, self.robot_id, camera='top'),
+                                        lambda report: workspace.validate_report(report))
         return SpotterAdapter(base, supervisor, geometry, robot_id=self.robot_id,
                               camera_source=self.camera_source, max_lead=self.max_lead,
-                              preparation=prepare_geometry)
+                              preparation=prepare_geometry, grounding=grounding)
 
     def validate_launch(self, visitor, payload, paid):
         if payload.get('provider') not in ('spotter', self.base_provider):
@@ -289,5 +296,4 @@ def create_app():
         recording_root=os.environ.get('SPOTTER_RECORDINGS', '/tmp/spotter-recordings') if development else None,
         robots=robots,
         share_conversation=False)
-    app.camera_origin_value = camera_origin.rstrip('/')
     return app

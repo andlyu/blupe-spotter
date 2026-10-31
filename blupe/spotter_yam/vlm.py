@@ -5,6 +5,16 @@ import re
 import time
 from urllib import error, request
 
+LOCATE = '''Select up to four task-relevant visible surface points in the CURRENT
+TOP camera image, for measuring repair geometry. Include the object to manipulate
+and an unoccupied part of its receiving surface where visible. Return only JSON:
+{"points":[{"name":"short descriptive unique name","point_1000":[x,y]}]}.
+Use integer relative coordinates on a 0–1000 grid: [0,0] is the top-left and
+[1000,1000] the bottom-right of the TOP image, x right, y down. These are NOT
+native pixel coordinates. Select an interior point on each visible surface,
+away from edges/occlusion. Do not guess XYZ, unseen objects or
+depth. Return an empty points list if no relevant surface is clearly visible.'''
+
 SCREEN = '''You screen a bimanual YAM robot's recent task execution. The base policy
 leads. Flag concrete evidence of missed grasps, wrong objects, drops or persistent
 lack of progress. Compare object motion across the time-ordered camera frames.
@@ -62,6 +72,20 @@ images that a held object is actually over the intended receiving surface before
 releasing it. If the base policy is still carrying the object toward that surface,
 or the needed 3D target is uncertain, hand back instead of guessing a release or
 an absolute xyz pose. Completed packet intent is not proof of grasp or placement.'''
+REPAIR += '''
+When context.grounding is supplied, its points are measured surface coordinates
+from the latest paired native overhead RGB-D image. Each point provides separate
+left/right arm-base XYZ. Choose an arm whose approach AND destination fit its
+bounds; the right hand need not do a task just because it moved previously.
+Use {"op":"move_to_point","arm":"left"|"right","point":"exact point name",
+"offset":[dx,dy,dz]} for ALL horizontal repair positioning. Offsets are metres
+in the selected arm base, each no larger than 0.15 in magnitude. Approach above
+the surface first; surface Z is the object top, not automatically the grasp
+center. Select an appropriate small grasp-height offset, then close and lift
+to verify before transport. Do not emit raw move_to or horizontal nudge when
+grounding is supplied. Lift, rotate, gripper and policy hand-back remain allowed.
+If the measurements/bounds do not support a repair, hand back. Experimental
+calibration is not a contact oracle; preserve its uncertainty.'''
 
 VERIFY = '''Verify the last Spotter repair using fresh CURRENT images and measured
 state against the recorded expectation. Return JSON {"verdict":"verified"|
@@ -188,6 +212,9 @@ class VisionSupervisor:
 
     def repair(self, task, history, context):
         return self.call(REPAIR, task, history, context=context)
+
+    def locate(self, task, history):
+        return self.call(LOCATE, task, history, max_tokens=600)
 
     def verify(self, task, history, context):
         result = self.call(VERIFY, task, history, context=context)

@@ -55,7 +55,7 @@ class SpotterAdapter:
 
     def __init__(self, base, supervisor, geometry, *, robot_id, camera_source,
                  max_lead=2, history_windows=10, max_interventions=8, max_plan_rounds=3,
-                 preparation=None):
+                 preparation=None, grounding=None):
         if type(max_lead) is not int or max_lead < 1 or not 2 <= history_windows <= 20:
             raise ValueError('Invalid Spotter supervision window configuration')
         self.base, self.supervisor, self.geometry = base, supervisor, geometry
@@ -63,6 +63,7 @@ class SpotterAdapter:
         self.robot_id, self.camera_source = robot_id, camera_source
         self.max_lead, self.max_interventions = max_lead, max_interventions
         self.max_plan_rounds, self.preparation = max_plan_rounds, preparation
+        self.grounding = grounding
         self.history = deque(maxlen=history_windows)
         self.cancelled = lambda: False
         self.refresh_observation = None
@@ -175,7 +176,14 @@ class SpotterAdapter:
         if self._rounds >= self.max_plan_rounds:
             raise RuntimeError('Spotter repair did not verify within its configured plan budget')
         bounds = {name: [float(lo), float(hi)] for name, lo, hi in zip(NAMES, self.geometry.low, self.geometry.high)}
-        result = self.supervisor.repair(prompt, list(self.history), {**context, 'bounds': bounds})
+        history = list(self.history)
+        if self.grounding:
+            history, measured, points = self.grounding.capture(prompt, history, self.supervisor, self.cancelled)
+            context = {**context, 'grounding': measured}
+            self._event('grounding', 'Repair targets measured from paired overhead RGB-D', grounding=measured)
+        result = self.supervisor.repair(prompt, history, {**context, 'bounds': bounds})
+        if self.grounding:
+            result = self.grounding.resolve(result, points)
         self._check_cancelled()
         self._repair = deque(validate_plan(result))
         self._repair_context = {'why': str(result.get('why', ''))[:500],
@@ -333,6 +341,7 @@ class SpotterAdapter:
         self._closed = True
         if self._future: self._future[1].cancel()
         self._pool.shutdown(wait=False, cancel_futures=True)
+        if self.grounding: self.grounding.close()
         close = getattr(self.base, 'close_transport', None)
         if callable(close): close()
 

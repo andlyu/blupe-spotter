@@ -85,6 +85,24 @@ def test_repair_uses_current_pose_not_stale_flagged_pose(adapter):
     assert adapter.supervisor.plans[0][1]['replan_from_current_state'] is True
 
 
+def test_repair_uses_grounded_history_and_resolves_before_geometry(adapter):
+    paired = [dict(frames=(), measured={'observed_at': 101.})]
+    calls = []
+    adapter.grounding = SimpleNamespace(
+        capture=lambda *args: (paired, {'points': {'object': {'left': [.4, 0, .1]}}}, {'object': 1}),
+        resolve=lambda result, points: calls.append(points) or {
+            'why': 'measured target', 'expectation': 'approach object',
+            'steps': [{'op': 'move_to', 'arm': 'left', 'xyz': [.4, 0, .2]}]},
+        close=lambda: None)
+    adapter._chunks = 2
+    adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
+    adapter.build_trajectory('move object', observation(16), 16)
+    history, context = adapter.supervisor.plans[-1]
+    assert history == paired and context['grounding']['points']['object']['left'] == [.4, 0, .1]
+    assert calls == [{'object': 1}]
+    assert adapter.geometry.targets[-1][0] == {'left_x': .4, 'left_y': 0, 'left_z': .2}
+
+
 def test_slow_supervisor_holds_at_bound_and_stop_discards_late_result(adapter):
     adapter._chunks=2
     pending=Future(); adapter._future=(1,pending)
