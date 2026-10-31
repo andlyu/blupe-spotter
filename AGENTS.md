@@ -29,3 +29,10 @@ Keep this in its separate repository. Robot access is API-only; SSH maintenance
 is limited to the website backend, never robot controllers. Deploy only the
 Robo-house service, preserving YAM1 and other integrations. Report remaining
 checklist gaps; do not call the integration complete while requirements are open.
+
+The owner reconfirmed Andrew and explicitly said “Email doesn't matter.”
+For this Spotter integration, email is optional and must not block acceptance
+or trigger another identity question. Restore known names only from this
+visitor/browser, keep the name editable, and never assign Andrew to other
+visitors. This owner preference is recorded in the integration checklist;
+permission continues to come from the shared harness contract.

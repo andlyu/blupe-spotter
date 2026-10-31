@@ -1,0 +1,13 @@
+{
+  "repository": "andlyu/blupe-spotter",
+  "url": "https://github.com/andlyu/blupe-spotter",
+  "visibility": "public",
+  "private": false,
+  "change_started_at": "2026-10-31T05:55:45.490260+00:00",
+  "change_api_s": 0.9465662499999326,
+  "verify_started_at": "2026-10-31T05:55:46.437072+00:00",
+  "anonymous_api_http_status": 200,
+  "verify_api_s": 0.2856901249999737,
+  "total_command_s": 1.2876005420000638,
+  "verified_at": "2026-10-31T05:55:46.722791+00:00"
+}

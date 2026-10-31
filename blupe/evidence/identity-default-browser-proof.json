@@ -1,0 +1,16 @@
+{
+  "name": {
+    "editable": true,
+    "name": "Andrew",
+    "required": true
+  },
+  "email": {
+    "empty": true,
+    "required": false
+  },
+  "owner_instruction": "Name is Andrew; email does not matter",
+  "run_submitted": false,
+  "initial_deployed_form_auto_prefill": "Andrew observed before manual editing in temporary verification tab",
+  "reload_persistence": "Node regression checks passed; browser reload verification blocked by startup stall",
+  "observed_at": 1793427527.496
+}
