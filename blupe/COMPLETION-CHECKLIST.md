@@ -128,6 +128,14 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   for that person. Record execution mode (such as `automated test`) and actual
   approach separately from human identity. Genuinely unattended/system activity
   has an explicit system identity; never fabricate a person's name or email.
+- [x] Advertised control primitives pass the offline command-contract release
+  gate through the actual parser, generator, canonical validator and JSON
+  serializer with actuator transport intercepted. Candidate144tests/2subtests
+  passed; see the October31 model-role/control evidence below.
+- [ ] Task acceptance matches the advertised manipulation capability and tested
+  deployment. A representative pick-and-place must visibly grasp, lift,
+  transfer, release and withdraw with the target at its requested destination.
+  Earlier physical task attempts failed; motion/replay do not certify placement.
 - [x] A person can use the website to run the integrated paper's method on
   physical YAM robots/arms. Record a verified physical execution of that method.
 - [x] The actual physical arms are visible live on the website while the method
@@ -783,3 +791,45 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
   to CPU quota alone. Evidence: outputs/spotter/start-latency in the chat workspace.
 - Status remains13/14fulfilled (11verified,2owner accepted). Detailed persistent
   wait-stage reporting remains required/open at the owner's lower priority.
+
+### Long's model guidance and control-contract gate — October31,2026
+
+- User supplied Long's clarification: the paper uses Qwen3.8, not Qwen3-VL;
+  establish the intervention path with GPT-6.1 sol and a worked image/text example.
+  Robo-house candidate uses qwen/qwen3.8-27b for screening and
+  openai/gpt-6.1-sol for judge/locate/repair/verify through the existing OpenRouter
+  endpoint/key. YAM1 configuration and its running process are unchanged.
+- Authenticated text-only checks returned the exact requested models;0.0001692USD
+  combined reported cost. A recorded-scene three-call diagnostic cost0.0200797USD.
+  The single-frame screen/judge returned pass, which is not a detector benchmark.
+  Sol's repair used CURRENT BLOCK from the current schema, passed point resolution
+  and validate_plan, and sent no action. All outputs/usage are retained in
+  outputs/spotter/long-guidance and the backend's spotter-long-guidance-01a18b9e.
+- Repair output is constrained to supported steps and exact currently measured
+  point names. Existing bounds, calibration/fresh-depth checks, IK, hardware
+  protection, cancellation, hand-back rules and physical repair budgets remain.
+  The real-image one-shot shows a proposed restaging correction from failed
+  ep_f29b605d61a941a8; it is explicitly not successful/executed task footage.
+- Current shared CONTROL-CONTRACT.md is adopted independently of the historical
+ 14-item checklist. Its two additional requirements above bring the inventory
+  to16. Physical task acceptance and detailed wait reporting remain open; previous
+  owner identity/email, timing and final-UI acceptance preferences are preserved.
+- Required deployment gate: PYTHON=/home/ubuntu/blupe-spotter/.venv/bin/python
+  bash blupe/deploy/preflight.sh.144tests/2subtests passed in15.48s. A regression
+  failed on the pinned generator because uninstructed joints drifted3.55e-15deg;
+  the repair wrapper now holds them exactly and preserves validated gripper
+  endpoints. Strict[0,1], finite checks and joint/workspace bounds are unchanged.
+- Command matrix: both arms' gripper0/1/partial/near-boundary targets from
+ 0.9992793312193716; multi-waypoint nudge/lift/move/rotate, grounded point binding,
+  base-Dream joint chunks, first/interior/final samples, contiguous IDs,10Hz
+  pacing and endpoint FK within the unchanged SDK2mm/orientation tolerance.
+  Invalid requests/starts, malformed plans, negative interpolation-residual
+  reproduction and exhausted budgets assert zero actuator submissions.
+  Fresh/changed depth/calibration and cancelled handoff regressions are included.
+  The numeric residual case is a minimal reproduction of the shared contract's
+  documented defect, not a claim that this integration physically sent it.
+- Canonical client: remote-yam e8158b7cfcbb90b2824dfc73e632b537bdfd942c;
+  src/remote_yam/session.py SHA256
+ 2e1735da0b528e57369a46c43e4ce831e798d7d3adba19b8f2c18684f07515e1.
+  No vendor or solver-tolerance change. Live verification of this candidate is
+  pending; no new physical task pass or integration-complete claim is made.

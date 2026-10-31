@@ -14,12 +14,12 @@ from urllib import request
 from . import ROOT
 from playground import HostedRunner, RequestError
 from remote_yam.controller_workspace import workspace_for_robot
-from remote_yam.robocurve_trajectory import RoboCurveTrajectory
+from .repair_motion import RepairTrajectory
 from remote_yam.yam_runpod_policy import MODELS
 from remote_yam.dream_worker_pool import DreamWorkerPool
 from .live_replays import LiveReplays, ReplayStore
 from .policy import SpotterAdapter
-from .vlm import ReadinessCache, VisionSupervisor
+from .vlm import ReadinessCache, TwoStageSupervisor, VisionSupervisor
 from .ui import runner_script
 from .motion import YAMMotionAdapter
 from .dream import SpotterDreamAdapter, PreparedDreamWorker, PREPARATION_TIMEOUT_S
@@ -45,12 +45,18 @@ class SpotterApp(HostedRunner):
         self.vlm_model = self.settings.get('vlm_model', 'qwen38')
         self.vlm_api_style = self.settings.get('vlm_api_style', 'vllm')
         self.vlm_key_file = self.settings.get('vlm_key_file', '')
+        self.repair_model = self.settings.get('repair_model', '')
+        self.repair_endpoint = self.settings.get('repair_endpoint') or self.vlm_endpoint
+        self.repair_api_style = self.settings.get('repair_api_style') or self.vlm_api_style
+        self.repair_key_file = self.settings.get('repair_key_file') or (
+            self.vlm_key_file if self.repair_endpoint == self.vlm_endpoint else '')
         self.max_lead = int(self.settings.get('max_lead', 2))
         kwargs.setdefault('robot_id', 'yam-1')
         if kwargs['robot_id'] not in STATIONS:
             raise ValueError('Spotter requires a configured YAM1 or Robo-house station')
         self.station_name, self.base_provider, self.base_label, self.base_model = STATIONS[kwargs['robot_id']]
         self.supervisor_preflight = ReadinessCache() if self.base_provider == 'dream' else None
+        self.intervention_preflight = ReadinessCache() if self.base_provider == 'dream' and self.repair_model else None
         self.dream_credentials = self.settings.get('dream_credentials_file', '')
         self.dream_python = self.settings.get('dream_python', '')
         self.dream_workers = BoundedSemaphore(1)
@@ -60,7 +66,10 @@ class SpotterApp(HostedRunner):
         vlm_configured = bool(self.vlm_endpoint and (self.vlm_api_style != 'openrouter'
                               or self.vlm_key_file and Path(self.vlm_key_file).is_file()
                               and secret_file(self.vlm_key_file)))
-        self.configured = bool(base_configured and vlm_configured)
+        repair_configured = (not self.repair_model or bool(self.repair_endpoint and
+            (self.repair_api_style != 'openrouter' or self.repair_key_file
+             and Path(self.repair_key_file).is_file() and secret_file(self.repair_key_file))))
+        self.configured = bool(base_configured and vlm_configured and repair_configured)
         self.camera_origin_value = kwargs.get('camera_origin', API).rstrip('/')
         super().__init__(**kwargs)
         self.local_replays = ReplayStore(self.settings.get('replay_root'))
@@ -79,7 +88,8 @@ class SpotterApp(HostedRunner):
         self.video_stream = None
         self.extra_providers.update({'spotter': self.make_spotter, self.base_provider: self.make_base})
         self.runpod_providers = {
-            'spotter': {'label': 'Spotter · ' + self.base_label + ' + ' + self.vlm_model,
+            'spotter': {'label': 'Spotter · ' + self.base_label + ' + ' + self.vlm_model +
+                        (' screen / ' + self.repair_model + ' repair' if self.repair_model else ''),
                         'model': 'spotter/' + self.base_model,
                         'default_run_duration_s': 300,
                         'help': self.base_label + ' leads. Spotter screens in parallel, confirms failures, repairs, then hands control back.'},
@@ -121,6 +131,7 @@ class SpotterApp(HostedRunner):
             await super().__call__(scope, lifecycle_receive, send)
         finally:
             self.supervisor_preflight.close()
+            if self.intervention_preflight: self.intervention_preflight.close()
             # The parent drains visitors first. Pool cleanup also interrupts an
             # unfinished prime; cancelled inference replies are never lent out.
             if self.replay_capture:
@@ -181,7 +192,7 @@ class SpotterApp(HostedRunner):
             raise RequestError(400, 'Unknown Spotter configuration')
         base = self.make_base('', directory)
         workspace = workspace_for_robot(self.robot_id)
-        geometry = RoboCurveTrajectory(**workspace.rgb_geometry_kwargs())
+        geometry = RepairTrajectory(**workspace.rgb_geometry_kwargs())
         workspace.configure_geometry(geometry)
         supervisor = self.make_supervisor()
         def prepare_geometry():
@@ -199,9 +210,14 @@ class SpotterApp(HostedRunner):
                               preparation=prepare_geometry, grounding=grounding)
 
     def make_supervisor(self, *, timeout=90):
-        return VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file),
+        screening = VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file),
                                 api_style=self.vlm_api_style, timeout=timeout,
                                 readiness_cache=self.supervisor_preflight)
+        if not self.repair_model: return screening
+        intervention = VisionSupervisor(self.repair_endpoint, self.repair_model, secret_file(self.repair_key_file),
+            api_style=self.repair_api_style, timeout=timeout, readiness_cache=self.intervention_preflight,
+            use_repair_example=self.base_provider == 'dream')
+        return TwoStageSupervisor(screening, intervention)
 
     def validate_launch(self, visitor, payload, paid):
         if payload.get('provider') not in ('spotter', self.base_provider):
@@ -232,7 +248,7 @@ class SpotterApp(HostedRunner):
         return {**setup, 'spotter': {'configured': self.runtime_configured(), 'base': self.base_label,
                                     'base_provider': self.base_provider, 'station': self.station_name,
                                     'stations': self.robots,
-                                    'supervisor': self.vlm_model, 'max_lead': self.max_lead,
+                                    'supervisor': self.vlm_model, 'intervention': self.repair_model, 'max_lead': self.max_lead,
                                     'dream_runtime': self.dream_readiness()}}, headers
 
     async def public_extension(self, scope, receive, send, headers):
@@ -254,7 +270,10 @@ class SpotterApp(HostedRunner):
             if self.supervisor_preflight is not None and self.runtime_configured():
                 # Page polling overlaps an authenticated, bounded preflight with
                 # composing the task. No robot lease, images or identity are used.
-                self.supervisor_preflight.start(self.make_supervisor(timeout=10))
+                supervisor = self.make_supervisor(timeout=10)
+                self.supervisor_preflight.start(getattr(supervisor, 'screening', supervisor))
+                if self.intervention_preflight:
+                    self.intervention_preflight.start(supervisor.intervention)
             await self.json(send, 200, {'configured': self.runtime_configured(),
                                       'dream_runtime': self.dream_readiness()})
             return True
@@ -284,7 +303,8 @@ def create_app():
     api = os.environ.get('YAM_SESSION_API', API)
     camera_origin = os.environ.get('YAM_CAMERA_ORIGIN', api)
     settings = {key: os.environ.get('SPOTTER_' + key.upper(), '') for key in
-                ('policy_endpoint', 'policy_key_file', 'vlm_endpoint', 'vlm_key_file')}
+                ('policy_endpoint', 'policy_key_file', 'vlm_endpoint', 'vlm_key_file',
+                 'repair_endpoint', 'repair_key_file', 'repair_model', 'repair_api_style')}
     settings.update(vlm_model=os.environ.get('SPOTTER_VLM_MODEL', 'qwen38'),
                     vlm_api_style=os.environ.get('SPOTTER_VLM_API_STYLE', 'vllm'),
                     max_lead=int(os.environ.get('SPOTTER_MAX_LEAD', '2')),

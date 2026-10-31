@@ -1,0 +1,139 @@
+{
+  "source_episode": "ep_f29b605d61a941a8",
+  "provenance": "Reconstructed from retained episode API receipts/nearest camera frames; not original raw VLM payload. Offline planning check only.",
+  "annotation": "Recorded failure scene; hand-authored corrective example, not an executed or successful demonstration. Images are nearest retained camera samples, not a synchronized raw VLM payload. Coordinates and point names belong only to this example. Never reuse them for the current scene.",
+  "task": "Put the orange rectangular block onto the gray plate.",
+  "context": {
+    "grounding": {
+      "points": {
+        "orange block top surface": {
+          "left": [
+            0.494742084978963,
+            -0.2103736290317569,
+            0.047739888683554166
+          ],
+          "right": [
+            0.494742084978963,
+            0.40962637096824306,
+            0.047739888683554166
+          ]
+        },
+        "plate unoccupied surface": {
+          "left": [
+            0.4732315782044133,
+            -0.09624375088364542,
+            0.0410484226544674
+          ],
+          "right": [
+            0.4732315782044133,
+            0.5237562491163545,
+            0.0410484226544674
+          ]
+        }
+      },
+      "meaning": "Recorded example surface measurements in each arm base; never current coordinates."
+    },
+    "bounds": {
+      "left_x": [
+        0.146831991,
+        0.746831991
+      ],
+      "left_y": [
+        -0.49362419399999996,
+        0.2063758060000001
+      ],
+      "left_z": [
+        -0.012671464999999993,
+        0.547328535
+      ],
+      "left_yaw": [
+        -3.141592653589793,
+        3.141592653589793
+      ],
+      "left_pitch": [
+        0.0,
+        0.0
+      ],
+      "left_roll": [
+        0.0,
+        0.0
+      ],
+      "left_gripper": [
+        0.0,
+        1.0
+      ],
+      "right_x": [
+        0.146831991,
+        0.746831991
+      ],
+      "right_y": [
+        -0.19362419400000003,
+        0.506375806
+      ],
+      "right_z": [
+        -0.012671464999999993,
+        0.547328535
+      ],
+      "right_yaw": [
+        -3.141592653589793,
+        3.141592653589793
+      ],
+      "right_pitch": [
+        0.0,
+        0.0
+      ],
+      "right_roll": [
+        0.0,
+        0.0
+      ],
+      "right_gripper": [
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "frames": [
+    {
+      "camera": "top",
+      "image": "top-000130.jpg",
+      "sha256": "e0690e5006c00a78ced6d37223fdc5bb4a042635e20533002e14f9f11a149c04",
+      "captured_at": 1793418438.0929406
+    },
+    {
+      "camera": "left",
+      "image": "left-000131.jpg",
+      "sha256": "2fc248048b609782529a7d43115d23ab2d509da58b2aecb0a798f66b9780533c",
+      "captured_at": 1793418438.3338327
+    },
+    {
+      "camera": "right",
+      "image": "right-000131.jpg",
+      "sha256": "a4b54e7184a0708afb8032df39d30a8a245c9bb11ab5c13f6b432e795f64919f",
+      "captured_at": 1793418437.7678704
+    }
+  ],
+  "response": {
+    "why": "The orange block remains outside the plate. Use the left arm: the recorded plate point is outside the right arm Y bounds. Re-stage above the measured object before returning to the policy.",
+    "expectation": "The empty left hand is open and above the orange block; the policy can attempt a fresh grasp. This segment does not claim placement success.",
+    "steps": [
+      {
+        "op": "gripper",
+        "arm": "left",
+        "value": 1
+      },
+      {
+        "op": "move_to_point",
+        "arm": "left",
+        "point": "orange block top surface",
+        "offset": [
+          0,
+          0,
+          0.07
+        ]
+      },
+      {
+        "op": "policy"
+      }
+    ]
+  }
+}

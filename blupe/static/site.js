@@ -36,7 +36,7 @@ window.yamApplication = {
     function showReadiness(state) {
       const dream = state.dream_runtime;
       readiness.textContent = state.configured
-        ? `${setup.base} + ${setup.supervisor} · ${dream ? 'Dream solver is ready; each run starts a clean model episode.' : 'Models prepare before execution.'} Select policy alone for a baseline.`
+        ? `${setup.base} + ${setup.supervisor}${setup.intervention ? ' screen / ' + setup.intervention + ' repair' : ''} · ${dream ? 'Dream solver is ready; each run starts a clean model episode.' : 'Models prepare before execution.'} Select policy alone for a baseline.`
         : dream?.preparing
           ? 'Preparing the Dream solver. Cameras are live; Run becomes available when preparation finishes.'
           : 'Model services are unavailable. Cameras remain live; Run is unavailable until preparation succeeds.';

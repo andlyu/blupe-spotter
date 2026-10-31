@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from urllib import error, request
+from .repair_contract import repair_example, repair_schema
 
 LOCATE = '''Select up to four task-relevant visible surface points in the CURRENT
 TOP camera image, for measuring repair geometry. Include the object to manipulate
@@ -27,6 +28,18 @@ Grippers are normalized 0 closed, 1 open; these are not millimetres, a force sen
 or proof that an object is held. One stationary arm can be normal. Camera/state
 timestamps are not hardware synchronized. If evidence is unreadable, flag it.
 Return JSON: {"flag":true|false,"risk":0..10,"why":"short observation"}.'''
+SCREEN += '''
+This deployment is a real tabletop scene, not RoboTwin or RoboCasa simulation.
+For a block-onto-plate or cube-into-cup task, watch the requested object and actual
+receiving surface, distinguishing the orange rectangular block from the yellow,
+blue/purple and red blocks, apple, markers and pens. Follow the task's current
+description and images; object positions can change between runs. Flag a close
+and lift whose object stays on the table, grasping a marker or other distractor,
+a dropped target, a completed release outside the requested receptacle, or repeated
+approaches/empty grasps at the same object with no improvement. A stationary target
+during the first approach is normal; repeated failed attempts are not. Screen the
+executed prefix, not future targets. A gripper-open value alone does not prove
+that a released object landed in the cup or on the plate.'''
 
 JUDGE = '''You are Spotter's failure-confirming supervisor for physical bimanual
 YAM arms. The frozen policy leads. You intervene only for a concrete failure;
@@ -220,7 +233,8 @@ class ReadinessCache:
 
 
 class VisionSupervisor:
-    def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm', readiness_cache=None):
+    def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm', readiness_cache=None,
+                 use_repair_example=False):
         if api_style not in {'vllm', 'openrouter'}:
             raise ValueError('Unknown supervisor API style')
         if api_style == 'openrouter' and not key.strip():
@@ -228,6 +242,8 @@ class VisionSupervisor:
         self.endpoint, self.model, self._key = endpoint.rstrip('/'), model, key
         self.timeout, self.api_style = timeout, api_style
         self.readiness_cache = readiness_cache
+        self.use_repair_example = use_repair_example
+        self.last_call = None
         self._opener = request.build_opener(request.ProxyHandler())
 
     def ready(self, cancelled=lambda: False):
@@ -240,7 +256,8 @@ class VisionSupervisor:
             if cancelled():
                 raise RuntimeError('Spotter preparation cancelled')
             # The public model catalog does not verify authentication or credits.
-            result = self.call('Return only JSON: {"ready":true}.', 'Readiness check', [], max_tokens=32)
+            result = self.call('Return only JSON: {"ready":true}.', 'Readiness check', [],
+                               max_tokens=256 if self.model == 'openai/gpt-6.1-sol' else 32)
             if cancelled():
                 raise RuntimeError('Spotter preparation cancelled')
             if result.get('ready') is not True:
@@ -270,7 +287,7 @@ class VisionSupervisor:
             headers['Authorization'] = 'Bearer ' + self._key
         return headers
 
-    def call(self, system, task, history, *, context=None, max_tokens=1800):
+    def call(self, system, task, history, *, context=None, max_tokens=1800, schema=None, example=None):
         content = [{'type': 'text', 'text': json.dumps({'task': task, 'context': context or {}}, allow_nan=False)}]
         for window in history:
             content.append({'type': 'text', 'text': json.dumps({key: value for key, value in window.items() if key != 'frames'}, allow_nan=False)})
@@ -280,14 +297,23 @@ class VisionSupervisor:
         body = {'model': self.model, 'temperature': .1, 'max_tokens': max_tokens,
                 'response_format': {'type': 'json_object'},
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}]}
+        if example:
+            body['messages'][1:1] = example
+        if schema is not None:
+            body['response_format'] = {'type': 'json_schema', 'json_schema': {
+                'name': 'spotter_repair', 'strict': True, 'schema': schema}}
         if self.api_style == 'openrouter':
             body['provider'] = {'require_parameters': True, 'sort': 'latency'}
             # This instruct checkpoint does not advertise a reasoning parameter.
-            if self.model != VISION_QWEN:
+            if self.model == 'openai/gpt-6.1-sol':
+                body.pop('temperature')
+                body['reasoning'] = {'effort': 'low'}
+            elif self.model != VISION_QWEN:
                 body['reasoning'] = {'effort': 'none'}
         else:
             body['chat_template_kwargs'] = {'enable_thinking': False}
         req = request.Request(self.endpoint + '/chat/completions', data=json.dumps(body, allow_nan=False).encode(), headers=self._headers())
+        started = time.monotonic()
         try:
             with self._opener.open(req, timeout=self.timeout) as response:
                 result = json.loads(response.read(4 * 1024 * 1024))
@@ -299,6 +325,8 @@ class VisionSupervisor:
             raise RuntimeError('Spotter supervisor request failed (' + type(exc).__name__ + ')') from None
         if isinstance(result, dict) and isinstance(result.get('error'), dict):
             raise self._api_error(result['error'].get('code')) from None
+        self.last_call = dict(model=result.get('model', self.model), duration_s=time.monotonic()-started,
+                              usage=result.get('usage'))
         try:
             return object_from_text(result['choices'][0]['message']['content'])
         except Exception as exc:
@@ -331,7 +359,10 @@ class VisionSupervisor:
         return result
 
     def repair(self, task, history, context):
-        return self.call(REPAIR, task, history, context=context)
+        options = {}
+        if self.use_repair_example:
+            options.update(schema=repair_schema(context), example=repair_example(), max_tokens=2400)
+        return self.call(REPAIR, task, history, context=context, **options)
 
     def locate(self, task, history):
         latest = history[-1]
@@ -350,3 +381,21 @@ class VisionSupervisor:
         if result.get('verdict') not in {'verified', 'replan', 'success'}:
             raise ValueError('Malformed verification result')
         return result
+
+
+class TwoStageSupervisor:
+    """Fast screening is independent of failure confirmation and correction."""
+    def __init__(self, screening, intervention):
+        self.screening, self.intervention = screening, intervention
+        self.model = self.screening_model = screening.model
+        self.intervention_model = intervention.model
+
+    def ready(self, cancelled=lambda: False):
+        self.screening.ready(cancelled)
+        self.intervention.ready(cancelled)
+
+    def screen(self, *args, **kwargs): return self.screening.screen(*args, **kwargs)
+    def judge(self, *args, **kwargs): return self.intervention.judge(*args, **kwargs)
+    def repair(self, *args, **kwargs): return self.intervention.repair(*args, **kwargs)
+    def locate(self, *args, **kwargs): return self.intervention.locate(*args, **kwargs)
+    def verify(self, *args, **kwargs): return self.intervention.verify(*args, **kwargs)

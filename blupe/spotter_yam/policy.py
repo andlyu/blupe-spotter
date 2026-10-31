@@ -94,6 +94,8 @@ class SpotterAdapter:
     def public_config(self):
         return {'provider': self.provider_name, 'model': self.model,
                 'base_model': self.base.model, 'supervisor_model': self.supervisor.model,
+                'screening_model': self.supervisor.model,
+                'intervention_model': getattr(self.supervisor, 'intervention_model', self.supervisor.model),
                 'max_lead_windows': self.max_lead, 'interventions': self._interventions,
                 'policy_chunks': self._chunks, 'checked_through': self._checked,
                 'warmup': 'ready' if self._prepared else 'warming',

@@ -6,7 +6,7 @@ YAM arms. It preserves the upstream Spotter source and licenses, and pins
 trajectory submission, measured execution feedback, IK and gateway checks.
 It is an embodiment port, not a reproduction of the paper's benchmark results.
 
-The **DreamZero YAM1** or **Dream-1 Robo-house** policy leads. A Qwen-compatible vision service
+The **DreamZero YAM1** or **Dream-1 Robo-house** policy leads. A configurable vision service
 screens completed windows in parallel; suspicious windows go to a confirming
 judge. The policy may lead supervision by at most two windows. Confirmed faults
 pause the policy at a packet boundary, plan from the **current** scene, execute
@@ -47,7 +47,7 @@ sets a private, service-owned `JAX_COMPILATION_CACHE_DIR`. A measured fresh proc
 still took about88seconds to configure after a successful cold prime; disk caching
 alone did not establish fast startup. The recipe also sets
 `SPOTTER_DREAM_RESIDENT_DIR` to retain one fully prepared process. At service start,
-the pinned pool prepares both checkpoint policies and both trajectory-kernel
+the pinned pool prepares the beta checkpoint and both trajectory-kernel
 structures in the background, without a robot lease or model prediction. The
 page reports preparation status; launch stays unavailable until the pool is ready.
 
@@ -85,7 +85,7 @@ The qualified self-hosted Qwen supervisor runs on RunPod serverless GPUs. The
 AWS web backend sends images and measured state to the configured supervisor;
 neither model runs on the YAM.
 
-### Managed Qwen through OpenRouter
+### Separate screening and intervention through OpenRouter
 
 Robo-house uses OpenRouter with a funded server-owned key; YAM1 retains its
 self-hosted RunPod supervisor. `deploy/robohouse.env.example` contains the
@@ -94,28 +94,41 @@ Robo-house configuration:
 ```sh
 SPOTTER_VLM_API_STYLE=openrouter
 SPOTTER_VLM_ENDPOINT=https://openrouter.ai/api/v1
-SPOTTER_VLM_MODEL=qwen/qwen3-vl-235b-a22b-instruct
+SPOTTER_VLM_MODEL=qwen/qwen3.8-27b
 SPOTTER_VLM_KEY_FILE=/home/ubuntu/.config/openrouter/api-key
+SPOTTER_REPAIR_MODEL=openai/gpt-6.1-sol
+SPOTTER_REPAIR_API_STYLE=openrouter
 ```
 
 Install the key as an owner-readable credential file outside the repository.
-The browser never receives it. Requests require JSON output and route only to
-providers supporting the requested parameters. This vision instruct checkpoint
-does not advertise reasoning control, so that parameter is omitted; models
-supporting it retain the disabled-reasoning setting. Camera inputs preserve all
-three views. Repair verification uses the latest two measured windows for this
-checkpoint; screening/judging retain their normal history.
+The browser never receives it. Qwen3.8-27B performs the fast screen with concrete
+physical-scene failure cues. GPT-6.1 sol confirms faults, selects measured points,
+plans repairs and verifies outcomes. The role model IDs are visible in the UI and
+run configuration. An unset repair model preserves the single-supervisor setup.
+Repair endpoint/key inherit the screener only for an identical endpoint; other
+endpoints require explicit credentials. YAM1 keeps its existing configuration.
 
-Robo-house now selects Qwen3-VL-235B-A22B-Instruct after narrow recorded checks
+GPT-6.1 sol uses low reasoning and omits unsupported temperature control. Repair
+responses use a strict schema containing only supported operations and the exact
+point names measured for the current scene; runtime grounding/IK/packet validation
+remain mandatory. A provenance-checked three-camera text/image example shows a
+proposed restaging repair from a prior failed run. It is explicitly not an executed
+or successful task demonstration. Example coordinates are never current targets.
+See [the example](examples/orange-block-repair/example.json).
+
+The previous runtime selected Qwen3-VL-235B-A22B-Instruct after narrow recorded checks
 of a held block, missed grasp and empty-hand clearance lift. The earlier
 Qwen3.8-27B variants confused these states. Explicit lift intent distinguishes
 clearance from a grasp check without claiming contact or holding. These checks
 are diagnostic evidence, not a benchmark or a reliable success-rate estimate.
 Provider quantization/revision can differ from the earlier self-hosted FP8
-supervisor; this is not an identical checkpoint reproduction.
+supervisor; this was not an identical checkpoint reproduction. Long clarified
+that the paper used Qwen3.8 and recommended GPT-6.1 sol to establish the repair
+path first. Those historical checks are retained, not treated as evidence that
+the earlier model matched the paper or that the new models solve the physical task.
 
 Before queue admission, the managed supervisor makes a small authenticated
-completion request (up to32output tokens) to verify model access and credits.
+completion request (up to32output tokens for Qwen,256 for sol) to verify model access and credits.
 The public model catalog alone cannot establish readiness. Authentication,
 credit and API failures end preparation with a sanitized error; they do not
 enter the self-hosted twenty-minute GPU-warmup retry loop. A readiness check
@@ -227,9 +240,22 @@ This dedicated virtual host uses the existing Blupe server, with its own backend
 and repository. `spotter.blupe.io` can replace it when a DNS record is available.
 
 ```sh
-PYTHONPATH=blupe python3 -m pytest blupe/tests -q
+PYTHON=.venv/bin/python bash blupe/deploy/preflight.sh
 node --check blupe/static/site.js
 ```
+
+The preflight must pass before deployment; retain its output and exact source and
+dependency revisions. It includes `test_control_contract.py`: real plan parser,
+point resolver, Cartesian/gripper generator, base-Dream joint generation,
+canonical client validator and JSON serialization with actuator transport
+intercepted. Both arms cover gripper0/1/partial/near-boundary targets from a
+fractional measured start, exact uninstructed holds, finite/invalid inputs,
+contiguous IDs, pacing and FK endpoint error within unchanged SDK tolerances.
+Invalid inputs and stale/changed grounding produce no actuator submission.
+The strict gripper validator stays at[0,1]; only already-validated generated
+endpoints are made exact. Cartesian targets can still be rejected as unreachable,
+out of workspace or unsafe; a numerical range is not a reachability guarantee.
+Calibration remains experimental and physical manipulation is separately verified.
 
 `blupe/deploy/spotter.service` installs a separate loopback-only service on the
 existing Blupe host. It does not modify or restart the main playground backend.
