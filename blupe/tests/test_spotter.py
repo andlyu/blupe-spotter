@@ -127,6 +127,41 @@ def test_verified_completion_is_model_reported_and_sends_no_next_packet(adapter)
     assert not adapter.base.calls
 
 
+def test_failed_policy_move_reaches_base_without_counting_completion(adapter):
+    calls = []
+    adapter.base.trajectory_failed = lambda *args, **kwargs: calls.append((args, kwargs))
+    adapter._last_kind = 'policy'
+    feedback = {'measured': observation(8), 'joints': [{'error_deg': 7.}]}
+    adapter.trajectory_failed('final_position_mismatch', 'Target not reached', 8, feedback=feedback)
+    assert calls == [(('final_position_mismatch', 'Target not reached', 8), {'feedback': feedback})]
+    assert adapter._chunks == 0
+
+
+def test_failed_repair_discards_remaining_steps_and_replans_from_fresh_pose(adapter):
+    from collections import deque
+    adapter._last_kind = 'repair'
+    adapter._repair_context = {'expectation': 'old target'}
+    adapter._repair = deque([{'op': 'move_to', 'arm': 'left', 'xyz': [1., 1., 1.]}])
+    adapter._verify = True
+    adapter.trajectory_failed('final_position_mismatch', 'Target not reached', 8,
+                              feedback={'measured': observation(8, x=.2)})
+    assert not adapter._repair
+    adapter.build_trajectory('move', observation(9, x=.4), 9)
+    history, context = adapter.supervisor.plans[-1]
+    assert context['execution_error']['code'] == 'final_position_mismatch'
+    assert context['replan_from_current_state']
+    assert history[-1]['measured']['step_id'] == 9
+    assert adapter.geometry.targets[-1][0]['left_x'] == pytest.approx(.43)
+
+
+def test_failed_repair_still_obeys_plan_budget(adapter):
+    adapter._last_kind = 'repair'; adapter._rounds = adapter.max_plan_rounds
+    adapter.trajectory_failed('joint_settle_timeout', 'Not settled', 2)
+    with pytest.raises(RuntimeError, match='plan budget'):
+        adapter.build_trajectory('move', observation(9), 9)
+    assert not adapter.geometry.targets
+
+
 def test_unmet_expectation_replans_from_fresh_feedback(adapter):
     adapter._repair_context=dict(expectation='object rises')
     adapter._verify=True

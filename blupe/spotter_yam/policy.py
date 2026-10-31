@@ -76,6 +76,7 @@ class SpotterAdapter:
         self._repair_context = None
         self._verify = False
         self._post_policy_expectation = None
+        self._execution_failure = None
         self._interventions = 0
         self._rounds = 0
         self._episode = None
@@ -201,6 +202,9 @@ class SpotterAdapter:
     def build_trajectory(self, prompt, observation, first_step_id):
         self._check_cancelled()
         window = self._snapshot(observation)
+        if self._execution_failure:
+            context, self._execution_failure = self._execution_failure, None
+            self._plan(prompt, context)
         if self._post_policy_expectation and self._last_kind == 'policy':
             context = self._post_policy_expectation
             verdict = self.supervisor.verify(prompt, list(self.history), context)
@@ -275,6 +279,34 @@ class SpotterAdapter:
             self._chunks += 1
             completed = getattr(self.base, 'trajectory_completed', None)
             if callable(completed): completed(observation, waypoint_count)
+
+    def trajectory_failed(self, code, message, waypoint_count, *, feedback=None):
+        # A failed packet is never a completed policy chunk. Dream discards its
+        # pending smoother target and resets before its next fresh prediction.
+        if self._last_kind == 'policy':
+            failed = getattr(self.base, 'trajectory_failed', None)
+            if not callable(failed):
+                raise RuntimeError('Spotter base policy cannot recover from failed moves')
+            failed(code, message, waypoint_count, feedback=feedback)
+        elif self._last_kind == 'repair':
+            # Do not run the rest of a primitive plan after a partial movement,
+            # or treat its expectation as verified. Replan at the next measured
+            # snapshot, using the existing finite plan budget.
+            previous = self._repair_context
+            self._repair.clear()
+            self._repair_context = self._post_policy_expectation = None
+            self._verify = False
+            if self._future:
+                self._future[1].cancel()
+                self._future = None
+            self._checked = self._chunks
+            self._execution_failure = dict(replan_from_current_state=True,
+                previous_repair=previous, execution_error=dict(code=code,
+                    message=str(message)[:300], waypoint_count=waypoint_count))
+        else:
+            raise RuntimeError('Spotter received failed-move feedback without an active packet')
+        self._event('recovery', 'Move did not reach its target; replanning from measured state',
+                    failure_code=code, waypoint_count=waypoint_count)
 
     def close_transport(self):
         self._closed = True

@@ -199,7 +199,7 @@ def test_resident_preparation_gates_launch_and_supplies_exclusive_factory(reside
     assert app.runtime_configured()
     base = app.make_base('', tmp_path)
     try:
-        assert base.worker_factory == app.dream_resident.factory
+        assert base.worker_factory.factory == app.dream_resident.factory
         assert base.worker_pool is app.dream_workers  # Still waits for lease.
     finally:
         base.close_transport()
@@ -241,3 +241,78 @@ def test_resident_lifespan_prepares_in_background_and_closes_pool(resident_app, 
         assert sent[-1] == 'lifespan.shutdown.complete'
 
     asyncio.run(exercise())
+
+
+@pytest.fixture
+def capacity_adapter(tmp_path, monkeypatch):
+    import time
+    from remote_yam.dream_policy import state_input
+    clock = SimpleNamespace(now=100.)
+    monkeypatch.setattr(time, 'monotonic', lambda: clock.now)
+    responses, requests, events = [], [], []
+    def call(kind, **kwargs):
+        assert kind == 'predict'
+        requests.append(kwargs)
+        return responses.pop(0)
+    worker = SimpleNamespace(call=call, close=lambda: None)
+    base = SpotterDreamAdapter(provider='dream', model='dreamlabs/dream-1-beta',
+        credentials='unused', python='unused', directory=tmp_path,
+        camera_source=None, observation_source=None, robot_id=ROBOHOUSE,
+        worker_factory=lambda *args: worker)
+    base._worker = base.worker_factory('unused', 'unused', tmp_path)
+    base._ready.set(); base._preparation = base._collector = object()
+    measured = observation(); measured['jetson_id'] = ROBOHOUSE
+    captures = []
+    def fresh(*args):
+        captures.append(len(captures))
+        return [{'timestamp': len(captures), 'observed_at': measured['observed_at'],
+                 'observation': state_input(measured, 'move')}]
+    base._wait_for_ticks = fresh
+    base.interaction_sink = lambda kind, message, **details: events.append((kind, message, details))
+    monkeypatch.setattr(base._stop, 'wait', lambda seconds: setattr(clock, 'now', clock.now + seconds))
+    yield base, responses, requests, events, clock, measured
+    base.close_transport()
+
+
+def refusal(**changes):
+    return dict(ok=False, error_type='DreamServerError', code='DA-2000', reason='pool_full',
+                retryable=True, retry_after_s=2., phase='predict', **changes)
+
+
+def test_capacity_refusal_retries_with_fresh_inputs_and_original_step_ids(capacity_adapter):
+    base, replies, calls, events, clock, measured = capacity_adapter
+    replies.extend([refusal(), {'ok': True, 'result': {'action': {
+        key: [[0.]*6+[.5]]*2 for key in ('q_l_chunk', 'q_r_chunk')}}}])
+    points = base.build_trajectory('move', measured, 8)
+    assert points[0]['step_id'] == 8 and len(calls) == 2
+    assert calls[1]['ticks'][-1]['timestamp'] > calls[0]['ticks'][-1]['timestamp']
+    assert clock.now == pytest.approx(102.)
+    assert any('capacity is busy' in message for _, message, _ in events)
+
+
+@pytest.mark.parametrize('change', [dict(retryable=False), dict(reason='max_serves'),
+    dict(code='DA-5000'), dict(error_type='DreamProtocolError')])
+def test_only_explicit_pre_action_capacity_refusals_are_retried(capacity_adapter, change):
+    base, replies, calls, events, clock, measured = capacity_adapter
+    replies.append({**refusal(), **change})
+    with pytest.raises(RuntimeError, match='Dream request failed'):
+        base.build_trajectory('move', measured, 8)
+    assert len(calls) == 1 and clock.now == 100.
+
+
+def test_capacity_wait_is_bounded_and_does_not_return_motion(capacity_adapter):
+    base, replies, calls, events, clock, measured = capacity_adapter
+    replies.extend([refusal()] * 10)
+    with pytest.raises(RuntimeError, match='Dream hosted model is busy'):
+        base.build_trajectory('move', measured, 8)
+    assert 1 < len(calls) <= 4 and clock.now <= 130.
+    assert base._pending_commanded is None
+
+
+def test_capacity_wait_honors_stop_before_another_request(capacity_adapter, monkeypatch):
+    base, replies, calls, events, clock, measured = capacity_adapter
+    replies.append(refusal())
+    monkeypatch.setattr(base._stop, 'wait', lambda seconds: base._stop.set())
+    with pytest.raises(RuntimeError, match='cancelled'):
+        base.build_trajectory('move', measured, 8)
+    assert len(calls) == 1
