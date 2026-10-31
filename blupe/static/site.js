@@ -16,6 +16,22 @@ window.yamApplication = {
     picker.value = 'spotter';
     picker.dispatchEvent(new Event('change'));
     document.title = `Spotter on Blupe · ${setup.station}`;
+    const progress = document.getElementById('message');
+    const status = document.getElementById('status');
+    function showSpotterProgress() {
+      if (picker.value !== 'spotter' || !progress || !status) return;
+      const text = progress.textContent;
+      const starting = 'Starting Spotter and joining the robot queue…';
+      if (text !== starting && !/^(Preparing the model GPU|Preparing before the robot queue · warming |In the robot queue · warming )/.test(text)) return;
+      const next = status.textContent.trim() === 'running' ? '' : starting;
+      if (progress.textContent !== next) progress.textContent = next;
+    }
+    if (progress && status) {
+      const observer = new MutationObserver(showSpotterProgress);
+      observer.observe(progress, {childList: true, subtree: true});
+      observer.observe(status, {childList: true, subtree: true});
+      showSpotterProgress();
+    }
     const readiness = document.getElementById('spotterReadiness');
     function showReadiness(state) {
       const dream = state.dream_runtime;
