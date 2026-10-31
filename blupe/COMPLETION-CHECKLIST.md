@@ -130,7 +130,7 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   has an explicit system identity; never fabricate a person's name or email.
 - [x] Advertised control primitives pass the offline command-contract release
   gate through the actual parser, generator, canonical validator and JSON
-  serializer with actuator transport intercepted. Candidate144tests/2subtests
+  serializer with actuator transport intercepted. Release144tests/2subtests
   passed; see the October31 model-role/control evidence below.
 - [ ] Task acceptance matches the advertised manipulation capability and tested
   deployment. A representative pick-and-place must visibly grasp, lift,
@@ -831,5 +831,44 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
 - Canonical client: remote-yam e8158b7cfcbb90b2824dfc73e632b537bdfd942c;
   src/remote_yam/session.py SHA256
  2e1735da0b528e57369a46c43e4ce831e798d7d3adba19b8f2c18684f07515e1.
-  No vendor or solver-tolerance change. Live verification of this candidate is
-  pending; no new physical task pass or integration-complete claim is made.
+  No vendor or solver-tolerance change. Physical verification follows below;
+  no physical task pass or integration-complete claim is made.
+
+### Deployed two-stage physical verification
+
+- Runtime/frontend5d7c743c6e8ba0c8e0ebbf5ee960d3b3b447498a;55owned files
+  matched the release manifest. The exact committed-source preflight passed
+ 144tests/2subtests in15.08s before deployment. Normal Robo-house restart72.364s,
+  configure17.695s and full solver preparation140.319s. YAM1/main service PIDs and
+  lifetimes stayed unchanged; model preparation held no robot lease.
+- Normal website UI, episodeep_f156d0ea4f494d2a, Andrew, separate automated-test
+  mode, no email or notifications,180s cap. Active run config confirmed
+  screening_model=qwen/qwen3.8-27b and intervention_model=openai/gpt-6.1-sol.
+- Qwen flagged failed grasps; sol confirmed a failed pickup/placement and planned
+  a measured left-arm restaging move. That repair was accepted and executed,
+  followed by policy handback. The later post-handback visual check reported
+  verified restaging; it did not establish grasp or task success. On a later
+  intervention sol found no valid orange-block depth point and returned control
+  without inventing a target. No repair-format rejection was observed.
+-12accepted packets/285confirmed waypoints,180.489s, normal run-duration stop,
+  parking/release, disabled station and empty queue. Orange block placement
+  failed. Missed grasps and unavailable target depth remain; calibration remains
+  experimental. This verifies repair-format/execution behavior, not reliable
+  manipulation or the paper's benchmark results.
+- Initial Run1793469622.971, confirmation9623.297; joined journal9624.427,
+  jetson_leased9634.594, reconciled Home feedback9635.225. First trajectory
+  submitted9641.874 (18.903s after initial Run), accepted9642.080. Submission is
+  not physical onset;0.5s sampled UI frames retain live motion. No new strict
+  every-run numerical pass is claimed; the owner's timing acceptance persists.
+- Same-run176s/352frames at2fps from retained actual camera API samples;
+  SHA2563751ff1294a8cc175967d85b03813b8b4a7125bdc2be5cba2128e038a3a3b879.
+  Ready1793469815.610789 versus runner end9814.999035:0.611754s after end.
+  Browser playback observed105.3353→176s/ended, native midpoint seek88s,
+  readyState4/no media error. Replay:
+  https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_f156d0ea4f494d2a&robot_id=robot-ba8413962083809c
+- Evidence: outputs/spotter/long-guidance in the chat workspace: source/provider
+  checks, original-frame hashes, required preflight, timed UI samples, early/mid/
+  terminal status, intervention events, replay metadata and playback/seek proof.
+- Current inventory14/16fulfilled:12verified and2owner-accepted. Open: physical
+  task acceptance and detailed persistent wait reporting (retained at lower
+  priority). The integration is not complete.
