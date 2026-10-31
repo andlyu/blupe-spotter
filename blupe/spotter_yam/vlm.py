@@ -1,7 +1,9 @@
 """Server-owned OpenAI-compatible vision supervisor; credentials never enter UI."""
 import base64
+import hashlib
 import json
 import re
+import threading
 import time
 from urllib import error, request
 
@@ -147,17 +149,93 @@ def object_from_text(text):
     return value
 
 
+class ReadinessCache:
+    """Short-lived authenticated preflight only; never camera or policy data."""
+    def __init__(self, ttl=60, clock=time.monotonic):
+        self.ttl, self.clock = ttl, clock
+        self._condition = threading.Condition()
+        self._identity, self._until = None, 0.
+        self._checking = self._scheduled = False
+        self._next_probe = 0.
+        self._closed = threading.Event()
+
+    @staticmethod
+    def identity(supervisor):
+        return (supervisor.endpoint, supervisor.model, supervisor.api_style,
+                hashlib.sha256(supervisor._key.encode()).digest())
+
+    def check(self, supervisor, cancelled, *, refresh=False):
+        identity = self.identity(supervisor)
+        stopped = lambda: self._closed.is_set() or cancelled()
+        with self._condition:
+            if stopped(): raise RuntimeError('Spotter preparation cancelled')
+            if not refresh and self._identity == identity and self.clock() < self._until:
+                return
+            while self._checking:
+                if stopped(): raise RuntimeError('Spotter preparation cancelled')
+                self._condition.wait(.1)
+            if stopped(): raise RuntimeError('Spotter preparation cancelled')
+            if not refresh and self._identity == identity and self.clock() < self._until:
+                return
+            self._checking = True
+            if not refresh:
+                self._identity, self._until = None, 0.
+        try:
+            supervisor._ready(stopped)
+            if stopped(): raise RuntimeError('Spotter preparation cancelled')
+            with self._condition:
+                self._identity, self._until = identity, self.clock() + self.ttl
+        except Exception:
+            with self._condition:
+                # A failed refresh must not leave an earlier success usable.
+                self._identity, self._until = None, 0.
+            raise
+        finally:
+            with self._condition:
+                self._checking = False
+                self._condition.notify_all()
+
+    def start(self, supervisor):
+        """Rate-limited refresh while the page polls; foreground launch can join it."""
+        with self._condition:
+            now = self.clock()
+            if (self._closed.is_set() or self._checking or self._scheduled or now < self._next_probe
+                    or self._identity == self.identity(supervisor) and self._until - now > 15):
+                return
+            self._scheduled, self._next_probe = True, now + 15
+        def probe():
+            try:
+                self.check(supervisor, self._closed.is_set, refresh=True)
+            except Exception:
+                pass  # Launch still performs its authenticated check and reports failures.
+            finally:
+                with self._condition:
+                    self._scheduled = False
+        threading.Thread(target=probe, daemon=True, name='spotter-supervisor-preflight').start()
+
+    def close(self):
+        self._closed.set()
+        with self._condition:
+            self._condition.notify_all()
+
+
 class VisionSupervisor:
-    def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm'):
+    def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm', readiness_cache=None):
         if api_style not in {'vllm', 'openrouter'}:
             raise ValueError('Unknown supervisor API style')
         if api_style == 'openrouter' and not key.strip():
             raise ValueError('OpenRouter supervisor requires a server-owned API key')
         self.endpoint, self.model, self._key = endpoint.rstrip('/'), model, key
         self.timeout, self.api_style = timeout, api_style
+        self.readiness_cache = readiness_cache
         self._opener = request.build_opener(request.ProxyHandler())
 
     def ready(self, cancelled=lambda: False):
+        if self.readiness_cache is not None:
+            return self.readiness_cache.check(self, cancelled)
+        return self._ready(cancelled)
+
+    def _ready(self, cancelled):
         if self.api_style == 'openrouter':
             if cancelled():
                 raise RuntimeError('Spotter preparation cancelled')

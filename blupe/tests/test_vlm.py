@@ -46,6 +46,55 @@ def provider(content, status=200):
 
 
 class ManagedSupervisorTests(unittest.TestCase):
+    def test_recent_authenticated_preflight_is_reused_but_key_model_and_expiry_are_not(self):
+        from spotter_yam.vlm import ReadinessCache
+        clock = [10.]
+        cache = ReadinessCache(ttl=60, clock=lambda: clock[0])
+        with provider({'ready': True}) as (endpoint, calls):
+            def client(key='test-key', model='qwen/test'):
+                return VisionSupervisor(endpoint, model, key, api_style='openrouter', readiness_cache=cache)
+            client().ready()
+            client().ready()
+            self.assertEqual(len(calls), 1)
+            client(key='rotated').ready()
+            client(key='rotated', model='qwen/changed').ready()
+            self.assertEqual(len(calls), 3)
+            clock[0] = 71.
+            client(key='rotated', model='qwen/changed').ready()
+            self.assertEqual(len(calls), 4)
+            with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                client(key='rotated', model='qwen/changed').ready(lambda: True)
+        cache.close()
+
+    def test_failed_preflight_is_not_cached_and_background_check_is_single_flight(self):
+        from spotter_yam.vlm import ReadinessCache
+        cache = ReadinessCache()
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        supervisor = VisionSupervisor('https://unused', 'qwen/test', 'key', api_style='openrouter', readiness_cache=cache)
+        def check(cancelled):
+            calls.append(1); entered.set()
+            self.assertTrue(release.wait(2))
+        supervisor._ready = check
+        cache.start(supervisor)
+        self.assertTrue(entered.wait(2))
+        cache.start(supervisor)
+        result = []
+        thread = threading.Thread(target=lambda: (supervisor.ready(), result.append('ready')))
+        thread.start()
+        release.set(); thread.join(2)
+        self.assertEqual(result, ['ready'])
+        self.assertEqual(calls, [1])
+        cache.close()
+        cache = ReadinessCache()
+        with provider({'ready': False}) as (endpoint, requests):
+            supervisor = VisionSupervisor(endpoint, 'qwen/test', 'key', api_style='openrouter', readiness_cache=cache)
+            for _ in range(2):
+                with self.assertRaisesRegex(RuntimeError, 'readiness'):
+                    supervisor.ready()
+            self.assertEqual(len(requests), 2)
+        cache.close()
+
     def test_vision_qwen_checkpoint_uses_supported_parameters_and_two_latest_windows(self):
         with provider({'verdict': 'verified', 'why': 'clearance lift'}) as (endpoint, calls):
             supervisor = VisionSupervisor(endpoint, 'qwen/qwen3-vl-235b-a22b-instruct', 'test-key', api_style='openrouter')

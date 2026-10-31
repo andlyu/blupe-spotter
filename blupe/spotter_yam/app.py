@@ -19,7 +19,7 @@ from remote_yam.yam_runpod_policy import MODELS
 from remote_yam.dream_worker_pool import DreamWorkerPool
 from .live_replays import LiveReplays, ReplayStore
 from .policy import SpotterAdapter
-from .vlm import VisionSupervisor
+from .vlm import ReadinessCache, VisionSupervisor
 from .ui import runner_script
 from .motion import YAMMotionAdapter
 from .dream import SpotterDreamAdapter, PreparedDreamWorker, PREPARATION_TIMEOUT_S
@@ -50,6 +50,7 @@ class SpotterApp(HostedRunner):
         if kwargs['robot_id'] not in STATIONS:
             raise ValueError('Spotter requires a configured YAM1 or Robo-house station')
         self.station_name, self.base_provider, self.base_label, self.base_model = STATIONS[kwargs['robot_id']]
+        self.supervisor_preflight = ReadinessCache() if self.base_provider == 'dream' else None
         self.dream_credentials = self.settings.get('dream_credentials_file', '')
         self.dream_python = self.settings.get('dream_python', '')
         self.dream_workers = BoundedSemaphore(1)
@@ -119,6 +120,7 @@ class SpotterApp(HostedRunner):
         try:
             await super().__call__(scope, lifecycle_receive, send)
         finally:
+            self.supervisor_preflight.close()
             # The parent drains visitors first. Pool cleanup also interrupts an
             # unfinished prime; cancelled inference replies are never lent out.
             if self.replay_capture:
@@ -181,8 +183,7 @@ class SpotterApp(HostedRunner):
         workspace = workspace_for_robot(self.robot_id)
         geometry = RoboCurveTrajectory(**workspace.rgb_geometry_kwargs())
         workspace.configure_geometry(geometry)
-        supervisor = VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file),
-                                      api_style=self.vlm_api_style)
+        supervisor = self.make_supervisor()
         def prepare_geometry():
             with request.urlopen(self.camera_origin_value + '/v1/robots/' + self.robot_id + '/calibration', timeout=10) as response:
                 report = json.loads(response.read(4 * 1024 * 1024))
@@ -196,6 +197,11 @@ class SpotterApp(HostedRunner):
         return SpotterAdapter(base, supervisor, geometry, robot_id=self.robot_id,
                               camera_source=self.camera_source, max_lead=self.max_lead,
                               preparation=prepare_geometry, grounding=grounding)
+
+    def make_supervisor(self, *, timeout=90):
+        return VisionSupervisor(self.vlm_endpoint, self.vlm_model, secret_file(self.vlm_key_file),
+                                api_style=self.vlm_api_style, timeout=timeout,
+                                readiness_cache=self.supervisor_preflight)
 
     def validate_launch(self, visitor, payload, paid):
         if payload.get('provider') not in ('spotter', self.base_provider):
@@ -245,6 +251,10 @@ class SpotterApp(HostedRunner):
                 await self.respond(send, status, body, 'video/mp4', extra)
             return True
         if scope.get('method') == 'GET' and name == '/spotter/readiness':
+            if self.supervisor_preflight is not None and self.runtime_configured():
+                # Page polling overlaps an authenticated, bounded preflight with
+                # composing the task. No robot lease, images or identity are used.
+                self.supervisor_preflight.start(self.make_supervisor(timeout=10))
             await self.json(send, 200, {'configured': self.runtime_configured(),
                                       'dream_runtime': self.dream_readiness()})
             return True
