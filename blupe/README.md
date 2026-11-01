@@ -166,6 +166,9 @@ and6plan rounds per intervention, editable from1–32steps and1–12rounds. The 
 defaults to10minutes (600s), editable from1–10minutes. These per-run limits are
 validated before queueing, isolated between visitors and retained in run details;
 they do not change hardware, workspace, contact, Stop or parking safeguards.
+Ten-minute replays retain the2fps timeline with a bounded200kbit/s encoder
+rate, so they fit the shared reader's unchanged16MiB limit and remain playable
+through both Spotter and BluPe. This recording setting does not alter model inputs.
 An explicit final policy step hands control back. A segment without that step
 continues under Spotter with fresh observations and the remaining round budget.
 This port-specific

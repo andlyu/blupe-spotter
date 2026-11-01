@@ -26,6 +26,17 @@ TERMINAL = {'stopped', 'completed', 'failed', 'error', 'timed_out', 'cancelled',
             'ended', 'safety_aborted', 'disconnected'}
 
 
+def encoder_command(encoder, target, *, input_args=None):
+    # 615s at 200 kbit/s is about15.4MB plus a small container/VBV overhead,
+    # within the pinned shared replay reader's unchanged16MiB serving limit.
+    source = input_args or ['-f', 'rawvideo', '-pixel_format', 'rgb24',
+        '-video_size', '960x576', '-framerate', '2', '-i', '-']
+    return [encoder, '-y', '-loglevel', 'error', *source, '-an', '-c:v', 'libx264',
+        '-threads', '1', '-preset', 'ultrafast', '-crf', '25',
+        '-maxrate', '200k', '-bufsize', '400k', '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart', str(target)]
+
+
 def atomic_json(path, value):
     temporary = path.with_suffix('.partial.json')
     temporary.write_text(json.dumps(value, allow_nan=False) + '\n')
@@ -154,11 +165,7 @@ class LiveRecording(threading.Thread):
                 raise RuntimeError('FFmpeg unavailable')
             partial = directory/'recording.partial.mp4'
             with tempfile.TemporaryFile() as errors:
-                self.encoder = subprocess.Popen([encoder, '-y', '-loglevel', 'error',
-                    '-f', 'rawvideo', '-pixel_format', 'rgb24', '-video_size', '960x576',
-                    '-framerate', '2', '-i', '-', '-an', '-c:v', 'libx264', '-threads', '1',
-                    '-preset', 'ultrafast', '-crf', '25', '-pix_fmt', 'yuv420p',
-                    '-movflags', '+faststart', str(partial)], stdin=subprocess.PIPE,
+                self.encoder = subprocess.Popen(encoder_command(encoder, partial), stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL, stderr=errors)
                 deadline = time.monotonic()+615
                 while not self.stop.is_set() and time.monotonic() < deadline:

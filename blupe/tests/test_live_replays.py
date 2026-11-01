@@ -61,7 +61,9 @@ def test_live_video_finalizes_on_its_terminal_state_without_native_archive(tmp_p
         def close(self): pass
     monkeypatch.setattr('spotter_yam.live_replays.SessionReviewRecorder', Collector)
     def read():
-        return dict(running, status='failed' if time.monotonic()-first>1.2 else 'running')
+        # This fixture owns its run lifecycle. End after actual encoded frames,
+        # so unrelated encoder/startup load cannot end it before recording starts.
+        return dict(running, status='failed' if job.frames >= 3 else 'running')
     job = LiveRecording(tmp_path, 'https://camera.example', ROBOHOUSE, running,
                         'recording regression fixture', 'Automated test fixture', read)
     job.start(); job.join(timeout=8)
@@ -74,6 +76,50 @@ def test_live_video_finalizes_on_its_terminal_state_without_native_archive(tmp_p
     result = json.loads((tmp_path/'.capture/ep_live/result.json').read_text())
     assert result['stopped_status'] == 'failed'
     assert time.monotonic()-first < 8
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='Host encoder is required')
+def test_slow_first_frame_does_not_end_the_fixture_before_recording(tmp_path, monkeypatch):
+    original = LiveRecording.canvas
+    def slow_first_frame(self):
+        if self.frames == 0: time.sleep(1.3)
+        return original(self)
+    monkeypatch.setattr(LiveRecording, 'canvas', slow_first_frame)
+    test_live_video_finalizes_on_its_terminal_state_without_native_archive(tmp_path, monkeypatch)
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='Host encoder is required')
+def test_ten_minute_encoder_output_fits_unchanged_shared_replay_limit(tmp_path):
+    from spotter_yam.live_replays import encoder_command
+    import subprocess
+    video = tmp_path/'ten-minute-encoder-fixture.mp4'
+    segment = tmp_path/'one-minute-encoder-fixture.mp4'
+    # Stress the real native-size encoder with changing noise, then repeat its
+    # actual encoded minute without re-encoding. This verifies a600s file and
+    # its byte budget, rather than imposing an unrelated fast-encoding target
+    # on a shared CPU. Synthetic input only; never physical run evidence.
+    command = encoder_command(shutil.which('ffmpeg'), segment, input_args=[
+        '-f', 'lavfi', '-i', 'testsrc2=size=960x576:rate=2:duration=60,noise=alls=24:allf=t'])
+    subprocess.run(command, check=True, capture_output=True, timeout=60)
+    subprocess.run([shutil.which('ffmpeg'),'-y','-loglevel','error','-stream_loop','9',
+        '-i',str(segment),'-c','copy','-movflags','+faststart',str(video)],
+        check=True,capture_output=True,timeout=60)
+    assert 0 < video.stat().st_size < 16*1024*1024
+    result = subprocess.run(['ffprobe','-v','error','-show_entries','format=duration',
+        '-of','json',str(video)],check=True,capture_output=True,text=True)
+    assert float(json.loads(result.stdout)['format']['duration']) == 600
+    import hashlib
+    from spotter_yam.live_replays import atomic_json
+    digest=hashlib.sha256(video.read_bytes()).hexdigest()
+    directory=tmp_path/'ep_long';directory.mkdir()
+    video.rename(directory/(digest+'.mp4'))
+    atomic_json(tmp_path/'ep_long.json',dict(episode_id='ep_long',robot_id=ROBOHOUSE,
+        task='Synthetic encoder fixture, not robot footage',bytes=(directory/(digest+'.mp4')).stat().st_size,
+        locally_ready_at=time.time(),preview=dict(sha256=digest,duration_s=600,speed=1,camera_order=['top'])))
+    store=ReplayStore(tmp_path)
+    assert store.get('ep_long',ROBOHOUSE)['video_duration_s']==600
+    status,body,headers=store.video('ep_long',digest,'bytes=1024-2047')
+    assert status==206 and len(body)==1024
 
 
 def test_replay_ui_autoplays_muted_and_distinguishes_retained_pauses():
