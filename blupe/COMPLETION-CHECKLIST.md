@@ -872,3 +872,57 @@ Current shared-template SHA256: `475957ebcfb814bd0793b1ac28b05dec6f5c36943c2294f
 - Current inventory14/16fulfilled:12verified and2owner-accepted. Open: physical
   task acceptance and detailed persistent wait reporting (retained at lower
   priority). The integration is not complete.
+
+
+## BluPe shared history — November 1, 2026
+
+Invocation: “When we reun spotter, these runs should also show up in blupe”,
+followed by “right, but dont' we have access to spotter's runs throguh blupe?”
+The user-adopted harness selects the requested playground-fix workflow. Its
+“Authorization granted by using this harness” contract authorizes the task's
+public source and website updates. This change uses retained public runs; it
+submits no runner identity and starts no physical run or model inference.
+
+- [x] Existing Spotter receipts are visible in BluPe's normal history and
+  table/cloud catalogs: public GET checks at 2026-11-01T12:07:22Z returned
+  21 runs with model `spotter/dreamlabs/dream-1-beta` and preserved runner names.
+- [x] Retained episode `ep_f156d0ea4f494d2a` is readable through BluPe with
+  Andrew attribution and the recorded stopped/time-limit result. Its 176s
+  replay served HTTP206 for bytes1024–2047 of7,957,115 on the BluPe origin.
+- [x] Future receipts are read from the existing integration database on every
+  history request. Offline regression adds a receipt after the first catalog
+  read and verifies immediate inclusion, processing state and no duplication.
+- [x] Source reads are SQLite read-only and scoped to Robo-house. Only public
+  run metadata, recorded model, name and result are projected; email and private
+  provider configuration are excluded. Replay hash/range checks are covered.
+- [x] Public shared source merged and website deployed. Both Spotter services
+  retained their original PIDs; no Spotter model configuration changed. Main
+  website restart3.784s after all four configured queues were observed empty.
+
+Public website: https://playground.blupe.io/
+Shared source: https://github.com/andlyu/blupe-remote-bots/pull/256
+Shared merge: `c0bc07c0d501b6d8340c07e3311c9d86cc7e2cf7` (change3067782).
+Implementation: `codex-runner/docs/integration-run-history.md` in that repository.
+The deployed overlay preserves other website changes; its source hashes and
+HTTP receipts are retained in `outputs/spotter-blupe-history-01a196bd` in the
+shared working checkout and `/home/ubuntu/spotter-blupe-tests-01a196bd` on the
+website host. Original data stores and recordings are not copied or migrated.
+
+Validation:75relevant Python tests+10subtests;343JavaScript tests; full isolated
+server suite1385passed/100skipped/181subtests and one display-dependent failure.
+That remaining viewer test passed separately with `MUJOCO_GL=egl` (5.57s).
+The baseline reproduces the unrelated local environment failures. No new
+physical execution, placement-success or numerical motion-timing claim.
+
+Broader integration acceptance remains14of16existing requirements fulfilled,
+including earlier owner acceptances; physical manipulation/task acceptance and
+detailed persistent wait reporting remain unchecked. The five checks above
+verify this history fix, not completion of the entire research integration.
+
+Browser verification of the deployed normal UI: select Table, filter to Spotter,
+open “Put red block into cup” (`ep_259657d9252c4482`). Playback advanced3.966599s,
+then sought52.250828s of104.5s with readyState4 and no media error. Source remained
+the exact BluPe-origin immutable replay URL. The11.419s browser command closed
+its own tab; no robot run or assessment vote. Screenshot and command log are
+retained with the receipts above. Earlier checkbox-wait timeout was a test-flow
+ordering issue (the filter was still closed); corrected flow passed.
