@@ -5,6 +5,8 @@ from . import RUNNER
 def runner_script():
     script = (RUNNER / 'static/hosted.js').read_text()
     edits = {
+        '...window.yamSystemPrompt?.payload()};':
+            '...window.yamSystemPrompt?.payload(), ...window.yamApplication?.runPayload?.()};',
         'player.play().catch(() => {});':
             'player.muted = true; player.play().catch(() => {});',
         '`${playbackSource(run, false).speed}× speed · idle pauses removed`':

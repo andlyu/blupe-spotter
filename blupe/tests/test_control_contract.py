@@ -171,3 +171,24 @@ def test_base_dream_joint_chunk_reaches_actual_serializer_without_network(bridge
     path=send(base.build_trajectory('offline joint chunk',obs,0))
     assert path[0]['step_id']==0 and len(path)>=1
     assert np.allclose(path[-1]['left_joints_deg'],obs['left_joints_deg'],atol=1e-12)
+
+
+@pytest.mark.parametrize('arm', ['left', 'right'])
+def test_longer_selected_plan_reaches_real_validator_with_exact_endpoints(bridge, arm):
+    send, wire = bridge; obs = measured(); gen = geometry()
+    adapter = SpotterAdapter(SimpleNamespace(model='offline'), SimpleNamespace(model='offline'), gen,
+        robot_id=RID, camera_source=None, max_plan_steps=16, max_plan_rounds=6)
+    result = dict(expectation='test exact fractions over a longer bounded plan', steps=[
+        dict(op='gripper', arm=arm, value=value) for value in [0, .37, 1] * 4])
+    try:
+        first = 0
+        for step in validate_plan(result, max_steps=adapter.max_plan_steps):
+            path = send(adapter._primitive(step, obs, first))
+            assert path[-1][arm+'_gripper'] == step['value']
+            assert path[0]['step_id'] == first
+            obs = {**obs, **path[-1], 'settled': True, 'observed_at': time.time()}
+            first += len(path)
+        assert len(wire) == 12
+        with pytest.raises(ValueError): validate_plan(result, max_steps=8)
+        assert len(wire) == 12  # Rejecting a smaller budget sends nothing else.
+    finally: adapter.close_transport()

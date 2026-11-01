@@ -3,13 +3,15 @@ from copy import deepcopy
 import math
 import time
 import numpy as np
+from .limits import DEFAULT_STEPS
 
 from remote_yam.cameras import CameraFrame
 
 
 class RepairGrounding:
-    def __init__(self, source, validate_report):
+    def __init__(self, source, validate_report, *, max_plan_steps=DEFAULT_STEPS):
         self.source, self.validate_report = source, validate_report
+        self.max_plan_steps = max_plan_steps
         self.snapshot = None
         self.pixels, self.last_refresh = {}, None
         self.cancelled = lambda: False
@@ -71,9 +73,9 @@ class RepairGrounding:
 
     def resolve(self, result, points):
         if (not isinstance(result, dict) or not isinstance(result.get('steps'), list)
-                or not 1 <= len(result['steps']) <= 8
+                or not 1 <= len(result['steps']) <= self.max_plan_steps
                 or not all(isinstance(step, dict) for step in result['steps'])):
-            raise ValueError('Repair steps must be a list of 1–8 action objects')
+            raise ValueError(f'Repair steps must be a list of 1–{self.max_plan_steps} action objects')
         result = deepcopy(result)
         referenced = {step.get('point') for step in result.get('steps', [])
                       if step.get('op') == 'move_to_point' and isinstance(step.get('point'), str)}

@@ -1,7 +1,7 @@
 {
   "source_episode": "ep_f29b605d61a941a8",
   "provenance": "Reconstructed from retained episode API receipts/nearest camera frames; not original raw VLM payload. Offline planning check only.",
-  "annotation": "Recorded failure scene; hand-authored corrective example, not an executed or successful demonstration. Images are nearest retained camera samples, not a synchronized raw VLM payload. Coordinates and point names belong only to this example. Never reuse them for the current scene.",
+  "annotation": "Recorded failure scene; hand-authored corrective example, not an executed or successful demonstration. Images are nearest retained camera samples, not a synchronized raw VLM payload. Coordinates and point names belong only to this example. Never reuse them for the current scene. The full corrective sequence and repeated-failure scenario are teaching annotations, not measured successful grasp/placement evidence. Current images, offsets, bounds and verification always override the example.",
   "task": "Put the orange rectangular block onto the gray plate.",
   "context": {
     "grounding": {
@@ -90,7 +90,11 @@
         0.0,
         1.0
       ]
-    }
+    },
+    "max_plan_steps": 16,
+    "remaining_plan_rounds": 6,
+    "repeated_intervention": true,
+    "scenario_annotation": "Illustrative repeated missed grasp after restaging; not a recorded successful sequence."
   },
   "frames": [
     {
@@ -113,8 +117,8 @@
     }
   ],
   "response": {
-    "why": "The orange block remains outside the plate. Use the left arm: the recorded plate point is outside the right arm Y bounds. Re-stage above the measured object before returning to the policy.",
-    "expectation": "The empty left hand is open and above the orange block; the policy can attempt a fresh grasp. This segment does not claim placement success.",
+    "why": "The block remains outside the plate. An earlier restaging has not solved this illustrative repeated failure. Use the left arm because the recorded plate point is outside the right arm Y bounds. Complete the supported grasp and placement instead of handing back immediately after approaching.",
+    "expectation": "Approach with an open hand, close around the intended orange block, and verify that this block rises with the hand before any transport. If verified, place it on the clear plate surface, release and withdraw. Replan if the grasp is empty. This proposed example has not executed and does not establish task success.",
     "steps": [
       {
         "op": "gripper",
@@ -130,6 +134,58 @@
           0,
           0.07
         ]
+      },
+      {
+        "op": "move_to_point",
+        "arm": "left",
+        "point": "orange block top surface",
+        "offset": [
+          0,
+          0,
+          -0.015
+        ]
+      },
+      {
+        "op": "gripper",
+        "arm": "left",
+        "value": 0
+      },
+      {
+        "op": "lift",
+        "arm": "left",
+        "dz": 0.07,
+        "intent": "grasp_check"
+      },
+      {
+        "op": "move_to_point",
+        "arm": "left",
+        "point": "plate unoccupied surface",
+        "offset": [
+          0,
+          0,
+          0.08
+        ]
+      },
+      {
+        "op": "move_to_point",
+        "arm": "left",
+        "point": "plate unoccupied surface",
+        "offset": [
+          0,
+          0,
+          0.035
+        ]
+      },
+      {
+        "op": "gripper",
+        "arm": "left",
+        "value": 1
+      },
+      {
+        "op": "lift",
+        "arm": "left",
+        "dz": 0.06,
+        "intent": "clearance"
       },
       {
         "op": "policy"

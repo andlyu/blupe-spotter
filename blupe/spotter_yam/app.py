@@ -24,6 +24,7 @@ from .ui import runner_script
 from .motion import YAMMotionAdapter
 from .dream import SpotterDreamAdapter, PreparedDreamWorker, PREPARATION_TIMEOUT_S
 from .history import ReceiptHistory
+from .limits import DEFAULT_DURATION_S, DEFAULT_STEPS, DEFAULT_ROUNDS, MAX_STEPS, MAX_ROUNDS, repair_limits
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
 ASSETS = ROOT / 'blupe/static'
@@ -91,7 +92,7 @@ class SpotterApp(HostedRunner):
             'spotter': {'label': 'Spotter · ' + self.base_label + ' + ' + self.vlm_model +
                         (' screen / ' + self.repair_model + ' repair' if self.repair_model else ''),
                         'model': 'spotter/' + self.base_model,
-                        'default_run_duration_s': 300,
+                        'default_run_duration_s': DEFAULT_DURATION_S, 'max_run_duration_s': 600,
                         'help': self.base_label + ' leads. Spotter screens in parallel, confirms failures, repairs, then hands control back.'},
             self.base_provider: {'label': self.base_label + ' · policy alone', 'model': self.base_model,
                           'default_run_duration_s': 300, 'help': 'The same station policy without Spotter supervision.'}}
@@ -149,15 +150,45 @@ class SpotterApp(HostedRunner):
             raise RequestError(503, 'Dream solver is preparing or unavailable. Live cameras remain available; try again when the page reports ready.')
 
     def launch(self, visitor, payload, **kwargs):
+        if payload.get('provider') == 'spotter':
+            limits = self.launch_limits(payload)
+            payload = dict(payload)
+            payload.setdefault('run_duration_s', DEFAULT_DURATION_S)
+            previous = kwargs.pop('provider_transform', None)
+            def configure(provider):
+                provider.configure_limits(**limits)
+                return previous(provider) if previous is not None else provider
+            kwargs['provider_transform'] = configure
         result = super().launch(visitor, payload, **kwargs)
         visitor.spotter_attempt_id = result.get('attempt_id')
         return result
+
+    @staticmethod
+    def launch_limits(payload):
+        try:
+            value = payload.get('spotter', {})
+            if not isinstance(value, dict): raise ValueError('Spotter repair limits must be an object')
+            return repair_limits(value)
+        except ValueError as exc:
+            raise RequestError(400, str(exc)) from None
 
     def remember_runner(self, visitor):
         # Prequeue preparation has no session ID at launch return. Associate
         # only the same visitor-owned attempt once its session exists.
         with visitor.lock:
             state = visitor.controller.status()
+            provider = state.get('provider') or {}
+            if provider.get('provider') == 'spotter':
+                # The pinned runner's generic snapshot deliberately has a small
+                # field list. Retain this integration's actual per-run settings
+                # alongside it before history records the configuration.
+                with visitor.controller._lock:
+                    configuration = visitor.controller._run_configuration
+                    if isinstance(configuration, dict):
+                        configuration.update(spotter={key: provider[key] for key in
+                            ('max_plan_steps', 'max_plan_rounds', 'max_interventions') if key in provider},
+                            underlying_models={key: provider[key] for key in
+                            ('base_model', 'screening_model', 'intervention_model') if key in provider})
             attempt = getattr(visitor, 'spotter_attempt_id', None)
             if (attempt and attempt == state.get('attempt_id') and state.get('session_id')
                     and not visitor.runner_session_id):
@@ -223,6 +254,8 @@ class SpotterApp(HostedRunner):
         if payload.get('provider') not in ('spotter', self.base_provider):
             raise RequestError(400, 'Choose Spotter or the matching station policy baseline')
         self.require_configured()
+        if payload.get('provider') == 'spotter': self.launch_limits(payload)
+        elif 'spotter' in payload: raise RequestError(400, 'Repair limits apply only to Spotter')
         return super().validate_launch(visitor, payload, paid)
 
     def page(self):
@@ -232,6 +265,14 @@ class SpotterApp(HostedRunner):
                             '<link rel="stylesheet" href="/spotter/site.css"><script src="/spotter/site.js" defer></script>')
         page = page.replace('<span class="consoleWordmark">BluPe</span>', '<span class="consoleWordmark">Spotter</span>')
         page = page.replace('<span class="consoleProduct">Playground</span>', '<span class="consoleProduct">BluPe</span>')
+        page = page.replace('<p id="aspireSetupGuidance"', f'''<fieldset id="spotterRepairSettings" class="spotterRepairSettings">
+<legend>Spotter repair limits</legend>
+<div class="runTimeControl"><label for="spotterRepairSteps">Steps per repair plan</label>
+<input id="spotterRepairSteps" form="runForm" type="number" min="1" max="{MAX_STEPS}" step="1" value="{DEFAULT_STEPS}" required></div>
+<div class="runTimeControl"><label for="spotterRepairRounds">Plan rounds per intervention</label>
+<input id="spotterRepairRounds" form="runForm" type="number" min="1" max="{MAX_ROUNDS}" step="1" value="{DEFAULT_ROUNDS}" required></div>
+<p class="help">Each round checks fresh images and can continue the repair. These limits apply to your next Spotter run.</p>
+</fieldset><p id="aspireSetupGuidance"''')
         start = page.index('  <p class="playgroundIntro">')
         end = page.index('</p>', start) + 4
         page = page[:start] + ('  <p class="playgroundIntro">' + self.base_label + ''' moves. Spotter watches, repairs failures, and hands control back.

@@ -926,3 +926,44 @@ the exact BluPe-origin immutable replay URL. The11.419s browser command closed
 its own tab; no robot run or assessment vote. Screenshot and command log are
 retained with the receipts above. Earlier checkbox-wait timeout was a test-flow
 ordering issue (the filter was still closed); corrected flow passed.
+
+
+## Configurable repair recovery — November1,2026 (candidate)
+
+Invocation: owner requested visitor-editable run duration and repair limits,
+600s/16steps/6rounds defaults, missing-depth clearance followed by fresh
+measurements, and complete supported corrections after repeated failed handbacks.
+The user-adopted shared harness's Authorization granted by using this harness
+covers the integration's public source/site update and bounded normal-queue
+verification. This expands the earlier180s task scope to600s on Robo-house,
+robot-ba8413962083809c, left/right YAM arms, existing site and queue/run API.
+Confirmed runner Andrew; no email or notifications; automated execution mode
+separate. Physical motion/recording is pending candidate release checks.
+
+- Default600s (editable60–600),16steps/plan (1–32),6plan rounds/intervention
+  (1–12); existing8intervention ceiling unchanged. Selected values are validated
+  before admission, applied per adapter/visitor and retained with model roles in
+  run configuration. Old station pages remain compatible with shared assets.
+- Clearance lifts are verified from settled feedback, then fresh paired RGB-D
+  is captured and points reselected before further repair or handback. Remaining
+  targets from the old view are discarded. No new depth source, guessed XYZ,
+  relaxed calibration/bounds or automatic timeout retry is introduced.
+- Explicit final policy steps still hand back. Segments without policy retain
+  Spotter ownership for another bounded observation/plan round. A grasp-check lift
+  must visibly lift the intended object before transport. Prior intervention
+  history is retained; the prompt and annotated image example support full
+  approach/grasp/lift/transfer/release/withdrawal where evidence permits it.
+  The example remains a proposed, unexecuted correction from a failed scene.
+- Red reproduction on9e6022c:5failed/1passed in0.99s (command1.787s), including
+  premature handback after clearance, lost intervention history and eight-step
+  rejection. First candidate preflight167passed/2subtests in16.54s
+  (command17.461s); final committed-source gate follows before deployment.
+- Current shared harness also adds explicit researcher model-choice/provenance
+  evidence. The owner's prior adopted choices remain Dream-1 beta policy,
+  qwen/qwen3.8-27b screening and openai/gpt-6.1-sol intervention via OpenRouter;
+  no model substitution is made here. Requested IDs are retained as provider IDs,
+  not claimed immutable weight revisions. Full new model-provenance/Model-field
+  acceptance is not re-certified by these repair changes.
+- Existing physical task acceptance and detailed persistent wait reporting stay
+  open. No fresh physical task success, new numerical motion-timing pass or
+  whole-integration completion is claimed at this candidate stage.

@@ -1,5 +1,23 @@
 'use strict';
 window.yamApplication = {
+  runPayload() {
+    if (document.getElementById('provider').value !== 'spotter') return {};
+    // Other station processes can still serve the older pinned page during
+    // this Robo-house-only deployment of the shared static assets.
+    if (!document.getElementById('spotterRepairSteps') || !document.getElementById('spotterRepairRounds')) return {};
+    const limits = {};
+    for (const [id, key, maximum, label] of [
+      ['spotterRepairSteps', 'max_plan_steps', 32, 'steps per repair plan'],
+      ['spotterRepairRounds', 'max_plan_rounds', 12, 'plan rounds per intervention']
+    ]) {
+      const value = Number(document.getElementById(id).value);
+      if (!Number.isInteger(value) || value < 1 || value > maximum) {
+        throw new Error(`Choose 1–${maximum} ${label}.`);
+      }
+      limits[key] = value;
+    }
+    return {spotter: limits};
+  },
   async sessionReady(session) {
     const picker = document.getElementById('provider');
     const setup = session.spotter;
@@ -15,6 +33,19 @@ window.yamApplication = {
     picker.replaceChildren(...Array.from(picker.options).filter(option => ['spotter', setup.base_provider].includes(option.value)));
     picker.value = 'spotter';
     picker.dispatchEvent(new Event('change'));
+    const repairSettings = document.getElementById('spotterRepairSettings');
+    const runDuration = document.getElementById('runDuration');
+    function updateRepairSettings() {
+      if (!repairSettings) return;
+      repairSettings.hidden = picker.value !== 'spotter';
+      for (const id of ['spotterRepairSteps', 'spotterRepairRounds']) {
+        const input = document.getElementById(id);
+        if (input) input.disabled = repairSettings.hidden || runDuration?.disabled === true;
+      }
+    }
+    picker.addEventListener('change', updateRepairSettings);
+    if (repairSettings && runDuration) new MutationObserver(updateRepairSettings).observe(runDuration, {attributes: true, attributeFilter: ['disabled']});
+    updateRepairSettings();
     document.title = `Spotter on Blupe · ${setup.station}`;
     const progress = document.getElementById('message');
     const status = document.getElementById('status');
@@ -107,7 +138,9 @@ window.yamApplication = {
           const ending = {completed: 'Finished', failed: 'Failed', stopped: 'Stopped',
             safety_aborted: 'Stopped', timed_out: 'Stopped', cancelled: 'Stopped'}[state.status] || 'Ended';
           title.textContent = watching ? 'Spotter activity' : 'Last Spotter run · ' + ending;
-          note.textContent = String(latest.message || '').slice(0, 2000);
+          const used = state.run_configuration?.spotter;
+          const limits = used ? ` · Repair limits: ${used.max_plan_steps} steps/plan, ${used.max_plan_rounds} rounds/intervention` : '';
+          note.textContent = String(latest.message || '').slice(0, 2000) + limits;
         } catch {
           if (!activity.hidden) title.textContent = 'Spotter activity unavailable · Reconnecting…';
         } finally {

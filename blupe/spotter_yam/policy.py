@@ -11,16 +11,18 @@ import time
 
 from remote_yam.providers import PolicyComplete
 from remote_yam.robocurve_trajectory import NAMES
+from .limits import DEFAULT_STEPS, DEFAULT_ROUNDS, repair_limits
 
 
 def number(value):
     return type(value) in (float, int) and math.isfinite(value)
 
 
-def validate_plan(result):
+def validate_plan(result, *, max_steps=DEFAULT_STEPS):
+    repair_limits({'max_plan_steps': max_steps})
     steps = result.get('steps')
-    if not isinstance(steps, list) or not 1 <= len(steps) <= 8:
-        raise ValueError('Spotter repair needs 1–8 steps')
+    if not isinstance(steps, list) or not 1 <= len(steps) <= max_steps:
+        raise ValueError(f'Spotter repair needs 1–{max_steps} steps')
     shapes = {'policy': {}, 'nudge': {'dxyz': 3}, 'lift': {'dz': 1},
               'move_to': {'xyz': 3}, 'rotate': {'yaw': 1}, 'gripper': {'value': 1}}
     for index, step in enumerate(steps):
@@ -58,7 +60,8 @@ class SpotterAdapter:
     supports_runtime_steering = False
 
     def __init__(self, base, supervisor, geometry, *, robot_id, camera_source,
-                 max_lead=2, history_windows=10, max_interventions=8, max_plan_rounds=3,
+                 max_lead=2, history_windows=10, max_interventions=8, max_plan_rounds=DEFAULT_ROUNDS,
+                 max_plan_steps=DEFAULT_STEPS,
                  preparation=None, grounding=None):
         if type(max_lead) is not int or max_lead < 1 or not 2 <= history_windows <= 20:
             raise ValueError('Invalid Spotter supervision window configuration')
@@ -66,8 +69,11 @@ class SpotterAdapter:
         self.model = 'spotter/' + base.model
         self.robot_id, self.camera_source = robot_id, camera_source
         self.max_lead, self.max_interventions = max_lead, max_interventions
-        self.max_plan_rounds, self.preparation = max_plan_rounds, preparation
+        limits = repair_limits(dict(max_plan_steps=max_plan_steps, max_plan_rounds=max_plan_rounds))
+        self.max_plan_steps, self.max_plan_rounds = limits['max_plan_steps'], limits['max_plan_rounds']
+        self.preparation = preparation
         self.grounding = grounding
+        if grounding is not None: grounding.max_plan_steps = self.max_plan_steps
         self.history = deque(maxlen=history_windows)
         self.cancelled = lambda: False
         self.refresh_observation = None
@@ -87,15 +93,26 @@ class SpotterAdapter:
         self._interventions = 0
         self._rounds = 0
         self._repair_plans = deque(maxlen=max_plan_rounds)
+        self._repair_history = deque(maxlen=12)
         self._episode = None
         self._closed = False
         self._prepared = False
+
+    def configure_limits(self, **limits):
+        values = repair_limits(limits)
+        if self._prepared or self.history or self._rounds:
+            raise ValueError('Repair limits can only be selected before a run starts')
+        self.max_plan_steps, self.max_plan_rounds = values['max_plan_steps'], values['max_plan_rounds']
+        self._repair_plans = deque(maxlen=self.max_plan_rounds)
+        if self.grounding is not None: self.grounding.max_plan_steps = self.max_plan_steps
 
     def public_config(self):
         return {'provider': self.provider_name, 'model': self.model,
                 'base_model': self.base.model, 'supervisor_model': self.supervisor.model,
                 'screening_model': self.supervisor.model,
                 'intervention_model': getattr(self.supervisor, 'intervention_model', self.supervisor.model),
+                'max_plan_steps': self.max_plan_steps, 'max_plan_rounds': self.max_plan_rounds,
+                'max_interventions': self.max_interventions,
                 'max_lead_windows': self.max_lead, 'interventions': self._interventions,
                 'policy_chunks': self._chunks, 'checked_through': self._checked,
                 'warmup': 'ready' if self._prepared else 'warming',
@@ -189,7 +206,8 @@ class SpotterAdapter:
             history, measured, points = self.grounding.capture(prompt, history, self.supervisor, self.cancelled)
             context = {**context, 'grounding': measured}
             self._event('grounding', 'Repair targets measured from paired overhead RGB-D', grounding=measured)
-        context = {**context, 'bounds': bounds, 'previous_repairs': deepcopy(list(self._repair_plans)),
+        context = {**context, 'bounds': bounds, 'previous_repairs': deepcopy(list(self._repair_history)),
+                   'max_plan_steps': self.max_plan_steps, 'repeated_intervention': self._interventions > 1,
                    'remaining_plan_rounds': self.max_plan_rounds-self._rounds}
         for attempt in range(2):
             try:
@@ -199,7 +217,7 @@ class SpotterAdapter:
                     if getattr(self.grounding, 'last_refresh', None):
                         self._event('grounding', 'Selected surfaces remeasured after planning; scene unchanged',
                                     grounding_refresh=self.grounding.last_refresh)
-                steps = validate_plan(result)
+                steps = validate_plan(result, max_steps=self.max_plan_steps)
                 if context.get('failed_policy_handback') and not self._restages(steps, history[-1]['cartesian']):
                     raise ValueError('The previous policy handback failed. Actual restaging is required before '
                         'another handback: use a measured positional or orientation correction, '
@@ -219,7 +237,10 @@ class SpotterAdapter:
         self._verify, self._verify_checkpoint = False, None
         self._repair_context = {'why': str(result.get('why', ''))[:500],
                                 'expectation': result['expectation'][:2000], 'steps': deepcopy(steps)}
-        self._repair_plans.append({**deepcopy(self._repair_context), 'status': 'planned'})
+        record = {**deepcopy(self._repair_context), 'status': 'planned',
+                  'intervention': self._interventions, 'plan_round': self._rounds + 1}
+        self._repair_plans.append(record)
+        self._repair_history.append(record)
         intervention = getattr(self.base, 'supervisor_intervention', None)
         if callable(intervention): intervention()
         self._rounds += 1
@@ -274,6 +295,7 @@ class SpotterAdapter:
             if verdict['verdict'] == 'replan':
                 self._plan(prompt, {**context, 'verification': verdict, 'failed_policy_handback': True})
         if self._repair_context and self._verify:
+            checkpoint = self._verify_checkpoint
             context = {**self._repair_context,
                        **({'checkpoint': deepcopy(self._verify_checkpoint)} if self._verify_checkpoint else {})}
             verdict = self.supervisor.verify(prompt, list(self.history), context)
@@ -282,7 +304,19 @@ class SpotterAdapter:
             self._verify = False
             self._verify_checkpoint = None
             if verdict['verdict'] == 'success': raise PolicyComplete('Spotter visually reports completion')
-            if verdict['verdict'] == 'replan': self._plan(prompt, {**context, 'verification': verdict})
+            clearance = bool(self.grounding and checkpoint and
+                checkpoint.get('completed_step', {}).get('intent') == 'clearance')
+            segment_end = not self._repair
+            if verdict['verdict'] == 'replan' or clearance or segment_end:
+                # A clearance invalidates the old view and target list. Stay in
+                # Spotter, measure a new RGB-D pair and plan from settled feedback
+                # before any old pending target or policy handback can execute.
+                if self._repair_plans:
+                    self._repair_plans[-1]['status'] = 'clearance_completed' if clearance else 'checked'
+                self._repair.clear()
+                self._plan(prompt, {**context, 'verification': verdict,
+                    **({'after_clearance': True} if clearance else {}),
+                    'continue_repair': True})
         result = self._take_review(wait=bool(self._future and self._chunks - self._checked >= self.max_lead))
         if result and not self._repair_context:
             if result['verdict'] == 'success':

@@ -1,4 +1,8 @@
 .spotterReadiness { margin: 0 0 1rem; max-width: 75ch; font-size: .875rem; line-height: 1.5; color: #344454; }
+.spotterRepairSettings { border: 0; padding: 0; margin: 1.25rem 0; min-width: 0; }
+.spotterRepairSettings legend { font-weight: 650; margin-bottom: .75rem; }
+.spotterRepairSettings .runTimeControl { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; gap: .75rem; align-items: center; }
+.spotterRepairSettings input { width: 100%; min-width: 0; }
 .playgroundConsole .playgroundIntro { display: block; max-width: 75ch; }
 .cameras[data-layout="multi"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 2fr) minmax(0, 1fr); }
 .cameras[data-layout="multi"] figure[data-camera-role="top"] { grid-column: 1 / -1; grid-row: 1; }

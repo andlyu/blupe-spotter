@@ -112,7 +112,7 @@ GPT-6.1 sol uses low reasoning and omits unsupported temperature control. Repair
 responses use a strict schema containing only supported operations and the exact
 point names measured for the current scene; runtime grounding/IK/packet validation
 remain mandatory. A provenance-checked three-camera text/image example shows a
-proposed restaging repair from a prior failed run. It is explicitly not an executed
+proposed full grasp/lift/placement correction from a prior failed scene. It is explicitly not an executed
 or successful task demonstration. Example coordinates are never current targets.
 See [the example](examples/orange-block-repair/example.json).
 
@@ -161,7 +161,14 @@ After a policy handback is visually verified to have failed, another handback
 requires a positional or orientation correction. The planner sees prior repair
 steps and their handback/failure status. Up to two proposals may correct an invalid
 unchanged plan; rejected proposals send no motion and do not add physical repair
-rounds. The three-round physical repair limit is unchanged. This port-specific
+rounds. Visitors choose the limits in run setup: the default is16steps per plan
+and6plan rounds per intervention, editable from1–32steps and1–12rounds. The run
+defaults to10minutes (600s), editable from1–10minutes. These per-run limits are
+validated before queueing, isolated between visitors and retained in run details;
+they do not change hardware, workspace, contact, Stop or parking safeguards.
+An explicit final policy step hands control back. A segment without that step
+continues under Spotter with fresh observations and the remaining round budget.
+This port-specific
 progress guard is related to upstream's optional Spotter-H earned-handback rule;
 it is not a claim that upstream enables that optional rule by default.
 
@@ -171,6 +178,18 @@ checkpoint and pending steps, so a successful lift can continue to its planned
 placement while an empty grasp still replans. A timed-out physical movement stops
 the run without automatic retry. Public repair notes retain planned steps
 separately from completed packet receipts.
+
+When a selected surface has missing depth, the planner checks all camera views
+and can propose a measured vertical clearance lift if the arm obstructs the
+target and that lift is supported by current pose, free space and bounds.
+After a clearance lift, Spotter verifies it and captures a new paired RGB-D
+observation before selecting points and replanning. Old pending targets and
+handback are discarded at that boundary. Missing depth never receives invented
+coordinates. Unrecoverable depth, no safe clearance or exhausted budgets remain
+honest limitations. Repair history persists across interventions so repeated
+missed grasps can lead to a complete supported reach/grasp/lift and placement
+instead of another identical restaging. Grasp-check lifts still require visible
+object motion before transport; timeouts still stop without automatic retry.
 
 The API marks Robo-house calibration `experimental_requires_fresh_validation`.
 A measured surface point is not a validated grasp pose or a contact sensor. The

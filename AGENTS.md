@@ -14,7 +14,11 @@ pointer alone is not an invocation.
 The task's concrete scope is Robo-house at
 `https://robohouse.spotter.54.209.185.15.sslip.io/`, queue/run API
 `https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com`, station
-`robot-ba8413962083809c`, left/right YAM arms, Spotter + Dream-1 beta, up to180s.
+`robot-ba8413962083809c`, left/right YAM arms, Spotter + Dream-1 beta, up to600s
+(the owner's November1 request expands the earlier180s limit). Run duration and
+repair budgets are visitor-configurable; defaults are600s,16steps per plan and
+6plan rounds per intervention. The finite run/plan ceilings and all physical
+safeguards remain enabled.
 
 Before each test, state the exact origins, station/arms, method/task, duration,
 motion and recording destination. Repeat the invocation, applicable contract wording and concrete scope in approval

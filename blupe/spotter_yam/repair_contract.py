@@ -3,6 +3,7 @@ import hashlib
 import json
 
 from . import ROOT
+from .limits import DEFAULT_STEPS, repair_limits
 
 
 def obj(properties):
@@ -10,6 +11,7 @@ def obj(properties):
 
 
 def repair_schema(context):
+    max_steps = repair_limits({'max_plan_steps': context.get('max_plan_steps', DEFAULT_STEPS)})['max_plan_steps']
     number = {'type': 'number'}
     arm = {'type': 'string', 'enum': ['left', 'right']}
     def vector(limit=None):
@@ -28,12 +30,16 @@ def repair_schema(context):
     else:
         variants += [step('move_to', xyz=vector()), step('nudge', dxyz=vector())]
     return obj({'why': {'type': 'string'}, 'expectation': {'type': 'string'},
-                'steps': dict(type='array', minItems=1, maxItems=8, items={'anyOf': variants})})
+                'steps': dict(type='array', minItems=1, maxItems=max_steps, items={'anyOf': variants})})
 
 
-def repair_example():
+def repair_example(*, max_steps=DEFAULT_STEPS):
     directory = ROOT / 'blupe/examples/orange-block-repair'
     data = json.loads((directory / 'example.json').read_text())
+    if len(data['response']['steps']) > max_steps:
+        data['response']['steps'] = data['response']['steps'][:max_steps]
+        data['response']['expectation'] = ('Execute this prefix, verify its executed outcome, '
+            'then remeasure and continue the repair. This prefix does not claim completed placement.')
     content = [{'type': 'text', 'text': json.dumps({key: value for key, value in data.items()
                 if key not in ('frames', 'response')}, allow_nan=False)}]
     import base64

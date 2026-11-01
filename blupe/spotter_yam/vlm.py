@@ -70,7 +70,8 @@ up). Rotations are yaw radians relative to the run's initial orientation.
 Grippers: 0 closed, 1 open; no force/contact oracle. The supplied bounds are
 the station's configured bounds. No simulator reset, teleport, or rewind exists.
 Return only JSON: {"why":"brief evidence","expectation":"what should change
-visually after this repair","steps":[...]}. At most 8 steps. Each step must name
+visually after this repair","steps":[...]}. Obey context.max_plan_steps and the
+remaining_plan_rounds budget. Each step must name
 "arm":"left"|"right", except a final {"op":"policy"} hand-back. Supported steps:
 {"op":"nudge","arm":"left","dxyz":[dx,dy,dz]},
 {"op":"lift","arm":"left","dz":number,"intent":"clearance"|"grasp_check"},
@@ -79,8 +80,13 @@ visually after this repair","steps":[...]}. At most 8 steps. Each step must name
 {"op":"gripper","arm":"left","value":0..1},
 {"op":"policy"}. The executor returns fresh measured feedback after each step;
 after a lift or completed plan segment it asks you to verify the visible outcome before
-continuing. Prefer re-staging then handing back to the base policy. If current
-evidence no longer supports a repair, return only the policy hand-back.'''
+continuing. Carry out a complete supported correction, including approach,
+grasp, verified lift, transfer, release and withdrawal when the evidence supports
+it; do not automatically hand back after merely reaching the object. End with
+policy ONLY when handing back is useful. A segment without policy stays under
+Spotter for fresh observations and another bounded plan round. If the task is
+already making ordinary policy progress or no safe correction is supported,
+explain that and return the policy hand-back.'''
 REPAIR += '''
 Give every lift an explicit intent: clearance raises/re-stages the hand before a
 grasp, while grasp_check follows an attempted close and must lift the intended
@@ -90,8 +96,10 @@ REPAIR += '''
 Do not open a gripper just because the task is unfinished. Confirm in current
 images that a held object is actually over the intended receiving surface before
 releasing it. If the base policy is still carrying the object toward that surface,
-or the needed 3D target is uncertain, hand back instead of guessing a release or
-an absolute xyz pose. Completed packet intent is not proof of grasp or placement.'''
+do not interrupt that normal progress. Missing 3D targets never justify guessed
+positions or releases. Consider the measured clearance/re-observation procedure
+below before handing back for missing depth. Completed packet intent is not proof
+of grasp or placement.'''
 REPAIR += '''
 When context.grounding is supplied, its points are measured surface coordinates
 from the latest paired native overhead RGB-D image. Each point provides separate
@@ -104,16 +112,32 @@ the surface first; surface Z is the object top, not automatically the grasp
 center. Select an appropriate small grasp-height offset, then close and lift
 to verify before transport. Do not emit raw move_to or horizontal nudge when
 grounding is supplied. Lift, rotate, gripper and policy hand-back remain allowed.
-If the measurements/bounds do not support a repair, hand back. Experimental
-calibration is not a contact oracle; preserve its uncertainty.'''
+If a requested point was omitted for missing/noisy depth or occlusion, inspect
+ALL camera views. When the arm visibly obstructs the target and a bounded
+vertical lift is supported by measured pose, free space and current bounds,
+return a short lift with intent=clearance, keeping the gripper and other arm
+unchanged. Do not assume the hand is empty or release a held object. End this
+segment there: Spotter verifies the lift, captures fresh RGB-D, reselects visible
+surface points and asks for another plan BEFORE handing back to Dream or using
+old targets. Side views help assess occlusion; they do not supply invented XYZ.
+After clearance, check whether the target is clearly visible and use only the
+newly measured points. Do not repeat blind lifts when the view is already clear,
+depth remains unavailable, or no safe clearance is supported; explain the actual
+limitation. Experimental calibration is not a contact oracle; preserve its
+uncertainty.'''
 REPAIR += '''
 Context.previous_repairs records planned steps and whether each reached a policy
-handback or failed. Use this causal history with the current visual evidence.
+handback, completed clearance or failed; intervention numbers retain earlier
+rounds across repeated interventions. Planned steps are intent, not proof of
+execution. Use this causal history with the current visual evidence.
 When failed_policy_handback is true, the prior handback has already been tested
 and failed: another unchanged handback, or only opening the gripper again, does
-not repair that failure. Re-stage the arm at a measured task-relevant approach,
-or correct its orientation, before trying the policy again. A manual close is
-available after a failed handback if visual evidence supports a grounded grasp.
+not repair that failure. When a previous restaging/handback or repeated policy
+attempt failed, prefer finishing the supported reach, close and verified lift
+yourself, then transport/release/withdraw if the measured destination permits it.
+A manual close is allowed when current images and grounded grasp geometry support
+it, including after an earlier restaging. Verify the intended object rises before
+continuing transport; replan an empty grasp from fresh observations.
 Do not spend the remaining rounds repeating the same ineffective release and
 handback. Keep inactive arms at their measured state and verify a lift before
 transport. If no valid repair is supported, explain the limitation explicitly.'''
@@ -361,7 +385,8 @@ class VisionSupervisor:
     def repair(self, task, history, context):
         options = {}
         if self.use_repair_example:
-            options.update(schema=repair_schema(context), example=repair_example(), max_tokens=2400)
+            options.update(schema=repair_schema(context),
+                example=repair_example(max_steps=context.get('max_plan_steps', 16)), max_tokens=4000)
         return self.call(REPAIR, task, history, context=context, **options)
 
     def locate(self, task, history):
