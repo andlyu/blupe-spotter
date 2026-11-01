@@ -114,8 +114,12 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   website's source code. Record both links and the deployed source revision.
 - [x] The website and its source repository are public, unless an explicit
   public-visibility exception for either is recorded below.
-- [x] The website clearly names the actual approach/method being run. Use the
-  executed method's name; Spotter is an example, not a shared hardcoded label.
+- [ ] The website clearly names Spotter, but the expanded approach-only Model
+  field contract is not fully verified: historical/current routing IDs still
+  combine Spotter with its base checkpoint. Keep this item open under the new rule.
+- [ ] The prior researcher-selected models are retained and actual role settings
+  are saved. Full requested/resolved model-version provenance and replacement
+  labeling under the new shared requirement remain unverified.
 - [x] When a human joins, collect or confirm their name and email. Prefill known
   identity/default values where available and let the runner edit both fields
   before joining.
@@ -132,10 +136,11 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   gate through the actual parser, generator, canonical validator and JSON
   serializer with actuator transport intercepted. Release144tests/2subtests
   passed; see the October31 model-role/control evidence below.
-- [ ] Task acceptance matches the advertised manipulation capability and tested
-  deployment. A representative pick-and-place must visibly grasp, lift,
-  transfer, release and withdraw with the target at its requested destination.
-  Earlier physical task attempts failed; motion/replay do not certify placement.
+- [x] Representative left-arm pick-and-place verified on the current deployment:
+  ep_287425ad70484713 visibly grasped, lifted, transferred and released the orange
+  block onto the plate, then withdrew. Final parked live view independently
+  confirms the block resting on the plate. This is one successful task; previous
+  failures remain historical and right-arm task reliability is not inferred.
 - [x] A person can use the website to run the integrated paper's method on
   physical YAM robots/arms. Record a verified physical execution of that method.
 - [x] The actual physical arms are visible live on the website while the method
@@ -967,3 +972,51 @@ separate. Physical motion/recording is pending candidate release checks.
 - Existing physical task acceptance and detailed persistent wait reporting stay
   open. No fresh physical task success, new numerical motion-timing pass or
   whole-integration completion is claimed at this candidate stage.
+
+
+### Final deployed repair-controls verification — November1,2026
+
+Runtime/frontend520896c; all58owned hashes matched. Final release gate170tests
+and2subtests passed in52.98s (subprocess56.672s), including real canonical packet
+validation, long plans, visitor isolation, forced depth/clearance re-observation,
+cancellation and unchanged timeout non-retry. A synthetic600s recording fit the
+unchanged16MiB reader and passed hash/range checks; it is not physical evidence.
+The replay fixture's1.2s wall-clock race was replaced by fixture-owned frame
+completion, retaining its video-duration,8s deadline and metadata/hash assertions.
+Fresh forced1.3s delay failed before/passed after; deliberate missing replay
+failed10/10 before and10/10 after. Historical baseline1/20 versus candidate0/20
+is retained separately; no test threshold was widened or skipped.
+
+Normal UI verified desktop1280px/mobile390px, changed2minutes/24steps/9rounds,
+then restored10minutes/16steps/6rounds. Actual run configuration retained those
+values and the prior chosen Dream-1 beta/Qwen3.8/Sol roles. Physical trial
+`ep_287425ad70484713`, Andrew, separate automated-test mode, no email/notifications,
+600s limit, completed its block-to-plate task in142.390944s. Twelve accepted and
+twelve completed packets,241confirmed waypoints:3Dream policy chunks followed by
+9Spotter primitives across3repair rounds, without policy handback. Real grasp,
+lift, transfer, release and withdrawal were observed, then both arms parked.
+The missing-depth clearance branch was regression-tested; it was not triggered
+physically in this successful scene. Do not claim a new physical occlusion test.
+
+Same-run137s/274frame/2fps replay ready0.838795s after actual controller end.
+Native midpoint68.5s and end137s decoded withreadyState4/no media error; playback
+advanced68.56184→70.627665. Independently verified the final live parked state.
+BluPe's public history returned this run with Andrew attribution and the same
+immutable replay hash; bytes1024–2047 returned206. No optional video download.
+Final API modeDISABLED, queue empty; disabled hardware reports the expected
+hardware_not_initialized state. YAM1 and main website PIDs/lifetimes unchanged.
+
+[Public verification receipt](evidence/repair-controls-20261101.json) and
+[verified replay](https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_287425ad70484713&robot_id=robot-ba8413962083809c).
+The600s ceiling was selected; the real run finished early on success. The600s
+file-size test used synthetic input and is not a claim of ten-minute physical
+execution. UI click was bracketed1793563339.861176–3341.945403; actual run start
+3352.474480/end3494.865424. Retained timed UI samples show actual arm motion;
+no new strict numerical timing pass or exact queue exclusion is claimed.
+
+Current shared17-item review:14fulfilled (12verified,2owner-accepted),3open.
+The successful task closes the old physical-task gap. Expanded approach-only
+Model labeling and model-version provenance are now explicitly open alongside
+persistent wait-stage reporting. Prior identity/email, timing, final-UI and
+removed uncoached-visitor preferences remain. Earlier14/16counts are historical;
+this task's changes and trial do not establish whole-integration completion.

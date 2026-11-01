@@ -132,3 +132,22 @@ Afterward the robot API reported **DISABLED**, both arms at their parked encoder
 positions, and no runner safety error. The resident solver's post-run readiness
 and episode-reset receipt are retained with the owner API snapshots in the
 operator's outputs. Replay publication is not required by this evidence.
+
+
+## November1: configurable repair recovery, first verified block-to-plate success
+
+See [the public receipt](evidence/repair-controls-20261101.json). On runtime520896c,
+normal UI episodeep_287425ad70484713 used the600s/16step/6round defaults and
+finished after142.391s. Three Dream chunks were followed by nine Spotter repair
+primitives in three rounds: corrected approach, close, verified lift, measured
+transport, lower/release and withdrawal. Final live view after parking independently
+shows the orange block resting on the plate. No human assessment was fabricated
+or changed. One task success does not establish repeated reliability, right-arm
+manipulation or paper benchmark reproduction. Missing-depth recovery is covered
+by regressions and was not physically triggered in this successful scene.
+
+Its137s actual-camera replay appeared0.839s after run end, played and decoded
+native midpoint/end seeks without errors; the same hash is served through BluPe.
+All170offline tests/2subtests passed before deployment. Prior failures remain
+valid historical observations; detailed progress and expanded model-provenance
+acceptance remain open.

@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-01",
+  "runtime_commit": "520896c7053ec9c4c51936a54a117395ce0ab3f4",
+  "website": "https://robohouse.spotter.54.209.185.15.sslip.io/",
+  "run_id": "ep_287425ad70484713",
+  "runner_name": "Andrew",
+  "execution_mode": "automated test",
+  "email_submitted": false,
+  "notifications_enabled": false,
+  "task": "Use the left arm to pick up the orange rectangular block just above the gray plate and place it onto a clear area of the plate. Release it and withdraw the hand.",
+  "selected": {
+    "run_duration_s": 600,
+    "max_plan_steps": 16,
+    "max_plan_rounds": 6,
+    "max_interventions": 8
+  },
+  "underlying_models": {
+    "base_model": "dreamlabs/dream-1-beta",
+    "screening_model": "qwen/qwen3.8-27b",
+    "intervention_model": "openai/gpt-6.1-sol"
+  },
+  "run_elapsed_s": 142.390944480896,
+  "task_success": true,
+  "verification": "Actual grasp/lift/transfer/release/withdrawal retained in replay; independent final live view after parking shows orange block resting on plate and both hands withdrawn. One successful task, not a repeatability benchmark.",
+  "repair_rounds": 3,
+  "repair_steps": 9,
+  "base_policy_packets": 3,
+  "repair_handed_back_before_completion": false,
+  "missing_depth_clearance_branch": "Verified offline; not physically triggered in this successful run. Fresh grounding between repair segments did execute.",
+  "metrics": {
+    "model_s": 0,
+    "execution_s": 30.018627405166626,
+    "left_path_m": 0,
+    "right_path_m": 0,
+    "model_calls": 0,
+    "execution_packets": 12,
+    "accepted_packets": 12,
+    "distance_waypoints": 0,
+    "confirmed_waypoints": 241
+  },
+  "replay": {
+    "url": "https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_287425ad70484713&robot_id=robot-ba8413962083809c",
+    "duration_s": 137,
+    "frames": 274,
+    "capture_fps": 2,
+    "sha256": "a7cfb17074c753d0d91bbc0df30d7187204651843ba16e026f61fab447fcf7d7",
+    "bytes": 3456327,
+    "ready_after_run_end_s": 0.8387947082519531,
+    "browser": "Native midpoint68.5s and end137s decoded readyState4/no error; actual playback68.56184\u219270.627665.",
+    "blupe_origin_range_status": 206
+  },
+  "offline_gate": {
+    "passed": 170,
+    "subtests": 2,
+    "pytest_s": 52.98,
+    "subprocess_s": 56.67224701028317,
+    "robot_commands": 0
+  },
+  "long_video_fixture": {
+    "synthetic": true,
+    "duration_s": 600,
+    "bytes": 15313282,
+    "serving_limit_bytes": 16777216,
+    "method": "Encode noisy native-size minute with production codec, repeat encoded bytes to600s; not physical footage."
+  },
+  "post_run": {
+    "mode": "DISABLED",
+    "queue_count": 0
+  },
+  "remaining_harness_items": [
+    "Separate approach-only Model label consistently across destinations",
+    "Complete requested/resolved model-version provenance verification",
+    "Detailed persistent wait-stage completion/stall/recovery reporting"
+  ],
+  "overall_integration_complete": false
+}
