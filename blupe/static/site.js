@@ -35,6 +35,7 @@ window.yamApplication = {
     picker.dispatchEvent(new Event('change'));
     const repairSettings = document.getElementById('spotterRepairSettings');
     const runDuration = document.getElementById('runDuration');
+    if (repairSettings && runDuration?.closest) runDuration.closest('.runDurationControl')?.after(repairSettings);
     function updateRepairSettings() {
       if (!repairSettings) return;
       repairSettings.hidden = picker.value !== 'spotter';
