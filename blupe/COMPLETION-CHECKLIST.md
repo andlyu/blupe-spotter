@@ -1050,7 +1050,7 @@ queue entry or movement was initiated for this diagnosis.
   evidence, not a physical-onset measurement or a certified GPU timing exception.
 - Existing Robo-house Dream worker reports ready. No provider/model substitution,
   resource scaling, service restart, movement retry or safeguard change.
-- Deployment/browser verification: pending. Expanded approach-only Model,
+- Deployment/browser verification: verified November 6, 2026, as detailed below. Expanded approach-only Model,
   immutable underlying-model provenance and complete wait-stage reporting remain
   open. Historical accepted physical evidence is not a new run result.
 
@@ -1060,3 +1060,37 @@ queue entry or movement was initiated for this diagnosis.
   disagreement. Cancelling that existing misrouted queue entry is cleanup, not
   a new run or a timed-out-motion retry. Fresh correct-station physical acceptance
   is not claimed by this browser-only repair.
+
+
+### Deployed startup repair verification
+
+- [x] Reproduced the initial station mismatch through the actual pinned picker;
+  the red YAM1 regression failed before the four-line startup pin.
+- [x] Offline release gate: 172 passed, 2 subtests, 11.32s; both station variants
+  and the five existing progress/identity cases pass. No control/model code changed.
+- [x] Public source: [PR1](https://github.com/andlyu/blupe-spotter/pull/1),
+  source 1e129223830ca8e8594434e98d257b044f05463f,
+  merged f5e4aec4f5c7ebc03ca0db4d37c9ab807cae0689.
+  Static asset deployed at 2026-11-06T21:20:09Z with SHA256
+  31f101f7ac61681f3feb44dafe2a0d284aacb0abb14d2bb52b01aa314dfc0673.
+  Both website services kept the same PIDs; no backend restart.
+- [x] Fresh normal browser reload at the original YAM1 origin selected YAM1,
+  displayed DreamZero and correctly reported Stopped / Waiting for operator
+  readiness, with queue empty. Selecting Robo-house navigated to its separate
+  origin and selected Robo-house / Dream-1, with the existing Qwen3.8 screen,
+  Sol repair and ready Dream solver shown. No task was submitted.
+- [x] The prior misrouted queue entry was cancelled through Leave queue; the UI
+  confirmed You left the queue and 0 waiting. No motion or recording was initiated.
+
+Current hardware observations are separate from model readiness. Both stations
+were DISABLED / hardware_not_initialized. Robo-house advertised queue_ready=true;
+YAM1 advertised queue_ready=false. This repair does not claim that either arm
+executed a new task, that operator readiness changed, or that the original
+request's object outcome was completed. Existing physical evidence and owner
+exceptions remain historical. The three broader Model/provenance/wait-reporting
+requirements remain unchecked; the integration is not claimed complete.
+
+Evidence retained in the task workspace under outputs/spotter-failure-01a1b2a9:
+preflight.log, yam1-corrected.jpg, robohouse-corrected.jpg and README.md. Public
+source above contains the regression and this preserved checklist. Private
+credentials and contact details are excluded from the new evidence.
