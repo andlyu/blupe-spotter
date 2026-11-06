@@ -1020,3 +1020,43 @@ Model labeling and model-version provenance are now explicitly open alongside
 persistent wait-stage reporting. Prior identity/email, timing, final-UI and
 removed uncoached-visitor preferences remain. Earlier14/16counts are historical;
 this task's changes and trial do not establish whole-integration completion.
+
+
+## Reported startup failure — November 6, 2026
+
+Invocation: “I tried running spotter, but it didn't work” at
+https://spotter.54.209.185.15.sslip.io/; follow-up “arm never moved”. The current
+user-adopted shared AGENTS.md selects the shared harness. Its Authorization
+granted by using this harness contract covers this scoped playground fix and
+public source/site delivery. No new physical run, runner identity submission,
+queue entry or movement was initiated for this diagnosis.
+
+- Confirmed startup routing defect: the YAM1-origin page and session identify
+  YAM1/DreamZero, while the pinned shared fleet picker unconditionally prefers
+  Robo-house before the integration's session hook. The selector, camera request
+  station and backend can disagree. The fix pins the initial picker from the
+  server-rendered station title before the shared picker runs; explicit station
+  changes keep the existing navigation to the station's separate origin.
+- Red regression exercises the actual pinned shared picker and reproduces
+  YAM1 selecting Robo-house. After the fix both station titles pass, including
+  Robo-house when only YAM1 is marked connected. Existing five owner-progress/
+  identity cases remain green. Full offline release preflight: 172 passed and
+  2 subtests in 11.32s, canonical control checks included, no actuator dispatch.
+- Separate observed cold launch: existing DreamZero worker resumed at
+  2026-11-06T21:00:27Z; its policy /health initially timed out, while Qwen's
+  /v1/models returned qwen38. A subsequent policy /health probe responded with
+  ok=true, CUDA device cuda:0, model robocurve/dreamzero-yam-molmoact2 and exact
+  expected revision f9b72b8dfa124f7283c5b1d467ce2ff9253c737a. This is readiness
+  evidence, not a physical-onset measurement or a certified GPU timing exception.
+- Existing Robo-house Dream worker reports ready. No provider/model substitution,
+  resource scaling, service restart, movement retry or safeguard change.
+- Deployment/browser verification: pending. Expanded approach-only Model,
+  immutable underlying-model provenance and complete wait-stage reporting remain
+  open. Historical accepted physical evidence is not a new run result.
+
+- Normal browser observation after policy readiness: the existing attempt moved
+  from preparing into queue place #1 on the YAM1 backend; the page still displayed
+  Robo-house and Checking / unavailable. This confirms actual backend/selector
+  disagreement. Cancelling that existing misrouted queue entry is cleanup, not
+  a new run or a timed-out-motion retry. Fresh correct-station physical acceptance
+  is not claimed by this browser-only repair.

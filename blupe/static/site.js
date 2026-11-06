@@ -1,5 +1,9 @@
 'use strict';
 window.yamApplication = {
+  // Each station has its own backend. Pin startup before the shared fleet
+  // picker applies its Robo-house default or connectivity-based ordering.
+  defaultRobot: {'Spotter on Blupe · YAM1': 'yam-1',
+    'Spotter on Blupe · Robo-house': 'robot-ba8413962083809c'}[document.title],
   runPayload() {
     if (document.getElementById('provider').value !== 'spotter') return {};
     // Other station processes can still serve the older pinned page during
