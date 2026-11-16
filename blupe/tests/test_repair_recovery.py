@@ -75,11 +75,12 @@ def test_segment_without_explicit_handback_keeps_repair_ownership(adapter):
     assert adapter.supervisor.plans and not adapter.base.calls
 
 
-def test_recovery_remains_bounded_by_the_selected_round_limit(adapter):
+def test_recovery_past_the_selected_round_limit_hands_back_to_policy(adapter):
     adapter.max_plan_rounds = 1
     adapter._rounds = 1
     adapter._repair_context = dict(expectation='clear view')
     adapter._primitive(dict(op='lift', arm='left', dz=.05, intent='clearance'), observation(), 0)
     adapter.grounding = SimpleNamespace(capture=lambda *a: pytest.fail('budget exhausted'), close=lambda: None)
-    with pytest.raises(RuntimeError, match='plan budget'): adapter.build_trajectory('task', observation(1), 1)
-    assert not adapter.base.calls
+    adapter.build_trajectory('task', observation(1), 1)
+    assert len(adapter.base.calls) == 1 and adapter._repair_context is None
+    assert adapter._repair_history[-1]['status'] == 'gave_up_handback'

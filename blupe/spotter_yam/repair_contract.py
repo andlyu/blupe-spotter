@@ -27,8 +27,7 @@ def repair_schema(context):
         names = sorted(context['grounding'].get('points', {}))
         if names:
             variants.append(step('move_to_point', point={'type': 'string', 'enum': names}, offset=vector(.15)))
-    else:
-        variants += [step('move_to', xyz=vector()), step('nudge', dxyz=vector())]
+    variants += [step('move_to', xyz=vector()), step('nudge', dxyz=vector())]
     return obj({'why': {'type': 'string'}, 'expectation': {'type': 'string'},
                 'steps': dict(type='array', minItems=1, maxItems=max_steps, items={'anyOf': variants})})
 

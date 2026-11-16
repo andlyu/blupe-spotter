@@ -196,10 +196,21 @@ class SpotterAdapter:
         self._checked = chunk
         return result
 
+    def _hand_back(self, reason):
+        """An unrepaired fault returns control to the policy instead of ending the run."""
+        self._repair.clear()
+        self._repair_context = self._post_policy_expectation = None
+        self._verify, self._verify_checkpoint = False, None
+        self._checked = self._chunks
+        self._repair_history.append({'status': 'gave_up_handback', 'why': reason[:500],
+                                     'intervention': self._interventions, 'plan_round': self._rounds})
+        self._event('handoff', 'Spotter could not repair this; returning control to the policy: ' + reason[:300])
+
     def _plan(self, prompt, context):
         self._check_cancelled()
         if self._rounds >= self.max_plan_rounds:
-            raise RuntimeError('Spotter repair did not verify within its configured plan budget')
+            self._hand_back('repair did not verify within its configured plan budget')
+            return
         bounds = {name: [float(lo), float(hi)] for name, lo, hi in zip(NAMES, self.geometry.low, self.geometry.high)}
         history = list(self.history)
         if self.grounding:
@@ -231,7 +242,8 @@ class SpotterAdapter:
                 continue
             break
         else:
-            raise RuntimeError('Spotter could not produce a valid repair: ' + context['planner_feedback'])
+            self._hand_back('no valid repair plan: ' + context['planner_feedback'])
+            return
         self._check_cancelled()
         self._repair = deque(steps)
         self._verify, self._verify_checkpoint = False, None
