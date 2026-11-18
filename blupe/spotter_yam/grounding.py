@@ -79,6 +79,17 @@ class RepairGrounding:
         result = deepcopy(result)
         referenced = {step.get('point') for step in result.get('steps', [])
                       if step.get('op') == 'move_to_point' and isinstance(step.get('point'), str)}
+        raw_xy = any(step.get('op') == 'move_to' or
+                     (step.get('op') == 'nudge' and
+                      (not isinstance(step.get('dxyz'), list) or len(step['dxyz']) != 3
+                       or step['dxyz'][:2] != [0, 0])) for step in result['steps'])
+        if raw_xy:
+            if self.snapshot is None or not points:
+                raise ValueError('Raw XY repair needs a measured scene; use clearance and remeasure when depth is missing')
+            # Raw targets do not name their source surface. Recheck every selected
+            # surface after slow planning, rather than letting raw XYZ bypass the
+            # freshness/changed-scene checks enforced for named-point targets.
+            referenced |= set(points)
         if referenced and (self.snapshot is None or self.snapshot.age() > 5):
             self._refresh(points, referenced)
         for step in result.get('steps', []):
@@ -93,8 +104,8 @@ class RepairGrounding:
                 arm = step['arm']
                 xyz = [a+b for a, b in zip(points[step['point']][arm], step['offset'])]
                 step.clear(); step.update(op='move_to', arm=arm, xyz=xyz)
-            # Raw move_to and horizontal nudge stay available beside measured points;
-            # choosing between them is the planner's call, not a server rule.
+            # Raw motion remains available beside fresh measured points. Ordinary
+            # schema, measured-feedback, IK and packet validation still follow.
         return result
 
     def _refresh(self, points, referenced):
