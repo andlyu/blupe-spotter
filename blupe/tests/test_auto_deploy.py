@@ -191,3 +191,61 @@ def test_public_health_route_contains_revision_and_counts_without_identity(tmp_p
     data = replies[0][1]
     assert data['revision'] == NEW and data['active_runs'] == 1 and data['ready']
     assert set(data) == {'ok', 'revision', 'ready', 'active_runs', 'launches', 'deployment'}
+
+
+@pytest.mark.parametrize('status', [401, 404])
+def test_only_bootstrap_can_use_legacy_status_instead_of_health(deployer, status):
+    from urllib.error import HTTPError
+    d = deployer
+    manifest = d.current / 'RELEASE.json'
+    manifest.write_text(json.dumps({'commit': OLD, 'bootstrap': True}))
+    def web(path, **kwargs):
+        if path == '/spotter/health': raise HTTPError('offline', status, 'old route', {}, None)
+        if path == '/api/session': return {}
+        if path == '/api/status': return {'whats_running': [], 'queue_snapshot': {'entries': []}}
+        if path == '/spotter/readiness': return {'configured': True}
+        raise AssertionError(path)
+    d.web = web
+    assert d.health() == dict(ok=True, revision=OLD, ready=True, active_runs=0, launches=0)
+    manifest.write_text(json.dumps({'commit': OLD}))
+    with pytest.raises(RuntimeError, match='no deployment health'): d.health()
+
+
+def test_pull_poller_skips_healthy_current_release_but_not_leftover_pause(deployer):
+    from deploy.poll_main import poll
+    d = deployer; d.main_sha = lambda: OLD
+    d.health = lambda: dict(revision=OLD, ready=True)
+    calls=[]; d.deploy=lambda revision:calls.append(revision)
+    assert poll(d) == 'current' and not calls
+    atomic_json(d.maintenance, {'phase': 'interrupted'})
+    assert poll(d) == 'deployed' and calls == [OLD]
+
+
+def test_failing_source_is_not_repeatedly_activated_by_the_timer(deployer):
+    from deploy.poll_main import poll
+    d = deployer
+    d.deploy = lambda revision: (_ for _ in ()).throw(RuntimeError('preflight failed'))
+    with pytest.raises(RuntimeError): poll(d)
+    calls=[]; d.deploy=lambda revision:calls.append(revision)
+    assert poll(d).startswith('failed;') and not calls
+    assert poll(d, retry=True) == 'deployed' and calls == [NEW]
+
+
+def test_github_waiter_checks_public_revision_and_reports_failed_gate():
+    from deploy.wait_for_deploy import wait
+    def ready(url): return {'revision': NEW, 'ready': True}
+    assert wait(NEW, fetch=ready) == 0
+    def failed(url):
+        if url.endswith('/health'): return {'revision': OLD, 'ready': True}
+        return {'revision': NEW, 'phase': 'failed', 'message': 'preflight failed'}
+    assert wait(NEW, fetch=failed) == 1
+
+
+def test_github_waiter_does_not_claim_success_from_generic_health():
+    from deploy.wait_for_deploy import wait
+    clock=[0.]
+    def fetch(url):
+        if 'api.github.com' in url:return {'object':{'sha':NEW}}
+        return {'revision':OLD,'ready':True,'phase':'warming'}
+    assert wait(NEW,fetch=fetch,clock=lambda:clock[0],
+                sleep=lambda seconds:clock.__setitem__(0,clock[0]+seconds),timeout=20)==1

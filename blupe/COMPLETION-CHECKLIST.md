@@ -1,5 +1,11 @@
 # Research integration completion checklist
 
+Current automation release note (November17): main auto-deployment verifies
+offline command contracts and website/solver health. Physical-task success and
+just-completed physical replay below remain historical for their cited revisions;
+this release has not been physically requalified. See `deploy/AUTO-DEPLOY.md`.
+
+
 Agents and humans: read this before integrating a paper or method. Copy this
 template into the integration's documentation, fill in the evidence, and check
 each box only after verification. All boxes must be checked before declaring the
@@ -136,7 +142,8 @@ and [Auto-review context and denials](https://learn.chatgpt.com/docs/sandboxing/
   gate through the actual parser, generator, canonical validator and JSON
   serializer with actuator transport intercepted. Release144tests/2subtests
   passed; see the October31 model-role/control evidence below.
-- [x] Representative left-arm pick-and-place verified on the current deployment:
+- [ ] Current source physical task acceptance awaits a new trial. Historical
+  representative left-arm pick-and-place verified on its original deployment:
   ep_287425ad70484713 visibly grasped, lifted, transferred and released the orange
   block onto the plate, then withdrew. Final parked live view independently
   confirms the block resting on the plate. This is one successful task; previous

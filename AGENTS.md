@@ -51,3 +51,12 @@ The owner quoted the final deployed-UI acceptance item and said “Yes, that's
 ok.” Treat that final-UI item as owner-accepted on existing run/replay evidence,
 without claiming a new physical run. Keep progress reporting open until it is
 verified; do not label the entire integration complete from this acceptance alone.
+
+## Automatic Robo-house deployment
+
+Merging/pushing main triggers the workflow in `.github/workflows/deploy-robohouse.yml`.
+The website host pulls main over HTTPS every two minutes, runs the full offline
+preflight, pauses new launches, drains active runs and cleanup, atomically switches
+its isolated release and verifies local/public exact-revision readiness. Failed
+startup rolls back. See `blupe/deploy/AUTO-DEPLOY.md`. Do not copy into the original
+shared YAM1 source or bypass these gates. GitHub Actions uses no deployment secret.

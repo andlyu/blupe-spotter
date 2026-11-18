@@ -1,7 +1,8 @@
 # Automatic Robo-house deployment
 
 Merging into `andlyu/blupe-spotter:main` runs **Test and deploy Spotter** in
-GitHub Actions. The workflow connects with a dedicated forced-command SSH key.
+GitHub Actions. A server-side timer detects new main commits over public HTTPS
+within about two minutes; the workflow waits for its result over public HTTPS.
 Only the current main commit is eligible; the server fetches its exact source
 and both submodule commits from public GitHub, then runs the complete existing
 offline preflight. Failure leaves the current website unchanged. PR branches
@@ -31,16 +32,17 @@ never accessed; deployment does not create a robot lease, run or motion.
 
 - Workflow: `.github/workflows/deploy-robohouse.yml`; automatic on main pushes,
   with a manual **Run workflow** option on main.
-- Installed fixed entry point: `/usr/local/libexec/blupe-spotter-deploy`.
+- Installed deployment code: `/usr/local/libexec/spotter-deploy/`.
+- Pull service/timer: `blupe-spotter-deploy.service` / `blupe-spotter-deploy.timer`.
 - Nonsecret host configuration: `/etc/blupe-spotter-deploy.json`.
 - Releases/current/last-good: `/home/ubuntu/spotter-auto-deploy/`.
 - Public maintenance metadata: `/var/lib/blupe-spotter-deploy/maintenance.json`.
 - Service: `blupe-spotter-robohouse.service`, port8821.
-- GitHub Actions secret: `SPOTTER_ROBOHOUSE_DEPLOY_KEY`. The existing owner SSH
-  key and all model/session credentials stay outside GitHub Actions.
+- No deployment credential in GitHub Actions. Owner SSH and model/session
+  credentials stay outside the workflow.
 
-The forced key accepts only `deploy <40-character-main-SHA>` and disables shell,
-PTY, forwarding and agent access. The server independently checks main again
+The deployment requires no GitHub Actions secret, inbound SSH access or new
+firewall rule. The server independently checks main again
 after draining, so a queued older commit cannot overwrite a newer release.
 Host-key checking is pinned; it is never disabled. Runtime requirement changes
 use a separate cached virtual environment, leaving the current environment intact.
@@ -52,6 +54,9 @@ the installed infrastructure files; ordinary application, prompt, test and
 asset changes deploy directly. To roll back manually, first pause admission,
 wait for idle, point `current` at a known healthy release, restart only the
 Robo-house service and verify its public health/replay before reopening launches.
+An explicitly failing source is not retried every timer tick. After correcting
+source, merge a new main commit; for an infrastructure-only retry, an operator can
+run `/usr/bin/python3 /usr/local/libexec/spotter-deploy/poll_main.py --retry` as ubuntu.
 Do not restart an active robot run or automatically retry a timed-out movement.
 
 ## Retained regression gate
@@ -73,3 +78,7 @@ success remains evidence for its original source revision.
 References: [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [GitHub repository secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets),
 [Caddy request matchers](https://caddyserver.com/docs/caddyfile/matchers#file).
+
+The initial SSH-triggered workflow could not reach port22 from GitHub hosted
+runners. It failed before source activation. The final pull deployment avoids
+that network dependency and does not open SSH/firewall access.

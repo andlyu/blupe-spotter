@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Spotter main for automatic deployment
+
+[Timer]
+OnBootSec=120
+OnUnitInactiveSec=120
+Unit=blupe-spotter-deploy.service
+
+[Install]
+WantedBy=timers.target

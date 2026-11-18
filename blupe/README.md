@@ -304,3 +304,10 @@ Sources: [Spotter paper](https://arxiv.org/abs/2609.36808),
 [upstream code](https://github.com/zqc3117/Spotter),
 [Blupe API](https://blupe.io/docs/robot-api/),
 [Harness VLA](https://arxiv.org/abs/2607.08448).
+
+### Automatic website updates
+
+Main merges deploy Robo-house automatically after the full offline release gate,
+idle draining and exact public revision/solver-readiness checks. Failure retains
+or restores the previous website. YAM1 stays on its separate existing deployment.
+See [automatic deployment](deploy/AUTO-DEPLOY.md) and the GitHub Actions run.

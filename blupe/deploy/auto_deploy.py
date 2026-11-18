@@ -96,6 +96,7 @@ class Deployer:
 
     def emit(self, phase, message, **details):
         event = dict(at=time.time(), phase=phase, message=message, **details)
+        atomic_json(self.maintenance.with_name('status.json'), event)
         print(json.dumps(event), flush=True)
         return event
 
@@ -194,7 +195,7 @@ class Deployer:
         except error.HTTPError as exc:
             status = exc.code
             exc.close()
-            if status != 404:
+            if status not in (401, 404):
                 raise
         # Bootstrap compatibility only: the original release has no new health
         # route. Caddy's file gate already blocks new /api/run requests.
@@ -323,6 +324,7 @@ class Deployer:
                 old_revision = json.loads((good / 'RELEASE.json').read_text())['commit']
                 self.wait_ready(old_revision)
                 self.maintenance.unlink()
+            self.emit('fetching', 'Fetching the exact main source and pinned dependencies', revision=revision)
             release = self.stage(revision)
             self.promote(release, revision)
 

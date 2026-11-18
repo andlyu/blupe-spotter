@@ -1,4 +1,10 @@
 # Installed inside the existing Robo-house site block. YAM1 stays unchanged.
+handle /spotter/deployment {
+    root * /var/lib/blupe-spotter-deploy
+    rewrite * /status.json
+    header Cache-Control no-store
+    file_server
+}
 @spotter_updating {
     method POST
     path /api/run

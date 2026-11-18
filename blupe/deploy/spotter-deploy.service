@@ -1,0 +1,15 @@
+[Unit]
+Description=Test and deploy current Spotter main on Robo-house
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/spotter-auto-deploy
+ExecStart=/usr/bin/python3 /usr/local/libexec/spotter-deploy/poll_main.py
+Nice=10
+TimeoutStartSec=40min
+TimeoutStopSec=180
+KillMode=process
+UMask=0077
