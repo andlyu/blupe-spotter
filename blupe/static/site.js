@@ -70,6 +70,10 @@ window.yamApplication = {
     }
     const readiness = document.getElementById('spotterReadiness');
     function showReadiness(state) {
+      if (state.deployment?.paused) {
+        readiness.textContent = state.deployment.message;
+        return;
+      }
       const dream = state.dream_runtime;
       readiness.textContent = state.configured
         ? `${setup.base} + ${setup.supervisor}${setup.intervention ? ' screen / ' + setup.intervention + ' repair' : ''} · ${dream ? 'Dream solver is ready; each run starts a clean model episode.' : 'Models prepare before execution.'} Select policy alone for a baseline.`

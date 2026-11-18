@@ -1,0 +1,16 @@
+# Installed inside the existing Robo-house site block. YAM1 stays unchanged.
+@spotter_updating {
+    method POST
+    path /api/run
+    file {
+        root /var/lib/blupe-spotter-deploy
+        try_files maintenance.json
+    }
+}
+handle @spotter_updating {
+    header Content-Type application/json
+    respond `{"error":"Spotter is updating. Active runs finish first; try again shortly."}` 503
+}
+handle {
+    reverse_proxy 127.0.0.1:8821
+}

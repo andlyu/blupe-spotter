@@ -12,7 +12,7 @@ import time
 from urllib import request
 
 from . import ROOT
-from playground import HostedRunner, RequestError
+from playground import HostedRunner, RequestError, ACTIVE
 from remote_yam.controller_workspace import workspace_for_robot
 from .repair_motion import RepairTrajectory
 from remote_yam.yam_runpod_policy import MODELS
@@ -25,6 +25,7 @@ from .motion import YAMMotionAdapter
 from .dream import SpotterDreamAdapter, PreparedDreamWorker, PREPARATION_TIMEOUT_S
 from .history import ReceiptHistory
 from .limits import DEFAULT_DURATION_S, DEFAULT_STEPS, DEFAULT_ROUNDS, MAX_STEPS, MAX_ROUNDS, repair_limits
+from .deployment import DeploymentState, DeploymentPaused
 
 API = 'https://yam-session-api.n5hthc3gj4cqy.us-east-1.cs.amazonlightsail.com'
 ASSETS = ROOT / 'blupe/static'
@@ -73,6 +74,13 @@ class SpotterApp(HostedRunner):
         self.configured = bool(base_configured and vlm_configured and repair_configured)
         self.camera_origin_value = kwargs.get('camera_origin', API).rstrip('/')
         super().__init__(**kwargs)
+        try:
+            revision = json.loads((ROOT / 'RELEASE.json').read_text()).get('commit')
+        except (OSError, ValueError):
+            revision = None
+        self.deployment = DeploymentState(self.settings.get('deploy_state_file'), revision,
+            lambda: sum(v.controller.busy() or v.controller.status().get('status') in ACTIVE
+                        for v in list(self.visitors.values())))
         self.local_replays = ReplayStore(self.settings.get('replay_root'))
         self.past_runs = ReceiptHistory(self.past_runs, self.run_names, self.robot_id, self.local_replays)
         self.replay_capture = (LiveReplays(self.local_replays.root, kwargs.get('camera_origin', API), self.robot_id)
@@ -150,6 +158,16 @@ class SpotterApp(HostedRunner):
             raise RequestError(503, 'Dream solver is preparing or unavailable. Live cameras remain available; try again when the page reports ready.')
 
     def launch(self, visitor, payload, **kwargs):
+        deployment = getattr(self, 'deployment', None)
+        if deployment is None:
+            return self._launch(visitor, payload, **kwargs)
+        try:
+            with deployment.admission():
+                return self._launch(visitor, payload, **kwargs)
+        except DeploymentPaused as error:
+            raise RequestError(503, str(error)) from None
+
+    def _launch(self, visitor, payload, **kwargs):
         if payload.get('provider') == 'spotter':
             limits = self.launch_limits(payload)
             payload = dict(payload)
@@ -291,10 +309,14 @@ class SpotterApp(HostedRunner):
                                     'base_provider': self.base_provider, 'station': self.station_name,
                                     'stations': self.robots,
                                     'supervisor': self.vlm_model, 'intervention': self.repair_model, 'max_lead': self.max_lead,
+                                    'deployment': self.deployment.status(),
                                     'dream_runtime': self.dream_readiness()}}, headers
 
     async def public_extension(self, scope, receive, send, headers):
         name = scope.get('path', '')
+        if scope.get('method') == 'GET' and name == '/spotter/health':
+            await self.json(send, 200, self.deployment.health(self.runtime_configured()))
+            return True
         clip = re.fullmatch(r'/api/quick-replays/(ep_[A-Za-z0-9_-]{1,100})/([0-9a-f]{64})\.mp4', name)
         if scope.get('method') == 'GET' and clip:
             eid, digest = clip.groups()
@@ -317,6 +339,7 @@ class SpotterApp(HostedRunner):
                 if self.intervention_preflight:
                     self.intervention_preflight.start(supervisor.intervention)
             await self.json(send, 200, {'configured': self.runtime_configured(),
+                                      'deployment': self.deployment.status(),
                                       'dream_runtime': self.dream_readiness()})
             return True
         if scope.get('method') == 'GET' and name == '/static/hosted.js':
@@ -353,6 +376,7 @@ def create_app():
                     dream_credentials_file=os.environ.get('SPOTTER_DREAM_CREDENTIALS_FILE', ''),
                     dream_python=os.environ.get('SPOTTER_DREAM_PYTHON', ''),
                     dream_resident_dir=os.environ.get('SPOTTER_DREAM_RESIDENT_DIR', ''),
+                    deploy_state_file=os.environ.get('SPOTTER_DEPLOY_STATE_FILE', ''),
                     replay_root=os.environ.get('SPOTTER_REPLAY_ROOT', ''))
     robot_id = os.environ.get('SPOTTER_ROBOT_ID', 'yam-1')
     robots = [{'id': robot_id, 'name': STATIONS[robot_id][0], 'url': public_origin + '/'}]
