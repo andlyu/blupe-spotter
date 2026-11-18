@@ -1,0 +1,12 @@
+{
+  "source": "fa7ee51a3b57ef765b893a452610b6ec959fdfeb",
+  "base": "d6139533fcda4e465c41cf2ada68a0fc379c30a8",
+  "command": "PYTHON=/home/ubuntu/blupe-spotter/.venv/bin/python bash blupe/deploy/preflight.sh",
+  "start_epoch": 1794979492.984405,
+  "elapsed_s": 78.21144995745271,
+  "exit_code": 0,
+  "stdout": "........................................................................ [ 41%]\n........................................................................ [ 82%]\n..............................                                         [100%]\n174 passed, 2 subtests passed in 73.28s (0:01:13)\n",
+  "stderr": "",
+  "validator_sha256": "2e1735da0b528e57369a46c43e4ce831e798d7d3adba19b8f2c18684f07515e1",
+  "physical_commands": 0
+}

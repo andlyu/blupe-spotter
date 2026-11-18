@@ -1,0 +1,10 @@
+{
+  "base_revision": "d6139533fcda4e465c41cf2ada68a0fc379c30a8",
+  "new_file": "blupe/tests/test_grounding_freshness.py",
+  "command": "PYTHON=/home/ubuntu/blupe-spotter/.venv/bin/python bash blupe/deploy/preflight.sh",
+  "elapsed_s": 62.781528521329165,
+  "exit_code": 0,
+  "stdout": "........................................................................ [ 40%]\n........................................................................ [ 81%]\n................................                                       [100%]\n176 passed, 2 subtests passed in 60.24s (0:01:00)\n",
+  "stderr": "",
+  "physical_commands": 0
+}

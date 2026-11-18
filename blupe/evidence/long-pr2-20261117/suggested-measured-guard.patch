@@ -1,0 +1,19 @@
+diff --git a/blupe/spotter_yam/grounding.py b/blupe/spotter_yam/grounding.py
+index 887b7b1..8f740b1 100644
+--- a/blupe/spotter_yam/grounding.py
++++ b/blupe/spotter_yam/grounding.py
+@@ -96,2 +96,4 @@ class RepairGrounding:
+-            # Raw move_to and horizontal nudge stay available beside measured points;
+-            # choosing between them is the planner's call, not a server rule.
++            elif step.get('op') == 'move_to' or (step.get('op') == 'nudge'
++                    and (not isinstance(step.get('dxyz'), list) or len(step['dxyz']) != 3
++                         or step['dxyz'][:2] != [0, 0])):
++                raise ValueError('Horizontal repair motion requires a measured point reference')
+diff --git a/blupe/spotter_yam/repair_contract.py b/blupe/spotter_yam/repair_contract.py
+index e138671..23101c2 100644
+--- a/blupe/spotter_yam/repair_contract.py
++++ b/blupe/spotter_yam/repair_contract.py
+@@ -30 +30,2 @@ def repair_schema(context):
+-    variants += [step('move_to', xyz=vector()), step('nudge', dxyz=vector())]
++    else:
++        variants += [step('move_to', xyz=vector()), step('nudge', dxyz=vector())]
