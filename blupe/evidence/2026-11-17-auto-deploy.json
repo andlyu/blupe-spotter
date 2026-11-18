@@ -1,0 +1,62 @@
+{
+  "scope": "Automatic deployment of public main to Robo-house only; no new physical robot task",
+  "source_revision": "aaa72f5d84db46c97169c82d764e0e121b68123f",
+  "site": "https://robohouse.spotter.54.209.185.15.sslip.io/",
+  "github_workflow": {
+    "url": "https://github.com/andlyu/blupe-spotter/actions/runs/44255011175",
+    "conclusion": "success",
+    "created_at": "2026-11-18T06:56:09Z",
+    "updated_at": "2026-11-18T07:04:05Z"
+  },
+  "actual_automatic_release_gate": {
+    "command": "PYTHON=<release runtime> bash blupe/deploy/preflight.sh",
+    "exit_code": 0,
+    "tests_passed": 218,
+    "subtests_passed": 2,
+    "pytest_seconds": 48.83,
+    "command_seconds": 51.886450143530965
+  },
+  "dependency_pins": {
+    "blupe/vendor/remote-yam": "e8158b7cfcbb90b2824dfc73e632b537bdfd942c",
+    "upstream/Spotter": "e90090cbbd625d27f140b771cf72dfe0110b4a9d"
+  },
+  "deployment": {
+    "transport": "Server-side public HTTPS pull; no GitHub deployment secret or new inbound firewall rule",
+    "poll_seconds": 120,
+    "timer_state": "active / waiting",
+    "release_loaded_at": "2026-11-18T06:59:42Z",
+    "public_health": {
+      "ok": true,
+      "revision": "aaa72f5d84db46c97169c82d764e0e121b68123f",
+      "ready": true,
+      "active_runs": 0,
+      "launches": 0,
+      "deployment": {"paused": false}
+    },
+    "yam1_and_main_playground_processes": "Unchanged",
+    "rollback": "Covered by offline lifecycle tests; production failure was not deliberately injected"
+  },
+  "history": {
+    "persistent_metadata_outside_release": true,
+    "original_databases_unchanged": true,
+    "run_metadata_rows_preserved": 26,
+    "catalog_total": 535,
+    "catalog_first_page_runs": 12
+  },
+  "browser_replay": {
+    "url": "https://robohouse.spotter.54.209.185.15.sslip.io/?run=ep_287425ad70484713&robot_id=robot-ba8413962083809c",
+    "runner_name": "Andrew",
+    "video_status": "ready",
+    "video_sha256": "a7cfb17074c753d0d91bbc0df30d7187204651843ba16e026f61fab447fcf7d7",
+    "playing_observation": {"current_time_s": 47.4422, "paused": false, "ready_state": 4, "error": null},
+    "native_end_seek_observation": {"current_time_s": 137, "duration_s": 137, "ended": true, "ready_state": 4, "error": null},
+    "human_assessment": "Unlabeled; unchanged",
+    "method": "Browser playback of an existing published recording; no new recording or motion"
+  },
+  "prior_failed_attempt": {
+    "url": "https://github.com/andlyu/blupe-spotter/actions/runs/44252215195",
+    "cause": "GitHub-hosted runner could not reach website host TCP 22; failed before activation",
+    "resolution": "Replaced SSH transport with server-side HTTPS pull; removed unused task-created SSH key and Actions secret"
+  },
+  "limits": "This verifies deployment, retained history and existing replay playback. It does not qualify a new physical task or mark the entire research harness complete."
+}
