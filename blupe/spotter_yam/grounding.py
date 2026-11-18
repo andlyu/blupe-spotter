@@ -93,10 +93,8 @@ class RepairGrounding:
                 arm = step['arm']
                 xyz = [a+b for a, b in zip(points[step['point']][arm], step['offset'])]
                 step.clear(); step.update(op='move_to', arm=arm, xyz=xyz)
-            elif step.get('op') == 'move_to' or (step.get('op') == 'nudge'
-                    and (not isinstance(step.get('dxyz'), list) or len(step['dxyz']) != 3
-                         or step['dxyz'][:2] != [0, 0])):
-                raise ValueError('Horizontal repair motion requires a measured point reference')
+            # Raw move_to and horizontal nudge stay available beside measured points;
+            # choosing between them is the planner's call, not a server rule.
         return result
 
     def _refresh(self, points, referenced):

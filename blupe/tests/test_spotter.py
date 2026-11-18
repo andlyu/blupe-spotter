@@ -172,12 +172,13 @@ def test_failed_repair_discards_remaining_steps_and_replans_from_fresh_pose(adap
     assert adapter.geometry.targets[-1][0]['left_x'] == pytest.approx(.43)
 
 
-def test_failed_repair_still_obeys_plan_budget(adapter):
+def test_failed_repair_at_plan_budget_hands_back_to_policy(adapter):
     adapter._last_kind = 'repair'; adapter._rounds = adapter.max_plan_rounds
     adapter.trajectory_failed('final_position_mismatch', 'Target not reached', 2)
-    with pytest.raises(RuntimeError, match='plan budget'):
-        adapter.build_trajectory('move', observation(9), 9)
-    assert not adapter.geometry.targets
+    adapter.build_trajectory('move', observation(9), 9)
+    assert not adapter.geometry.targets and not adapter.supervisor.plans
+    assert len(adapter.base.calls) == 1 and adapter._last_kind == 'policy'
+    assert adapter._repair_history[-1]['status'] == 'gave_up_handback'
 
 
 def test_supervisor_sees_completed_gripper_intent_separately_from_measurement(adapter):
@@ -248,7 +249,7 @@ def test_failed_handback_requires_restaging_before_another_policy_chunk(adapter)
     assert not adapter.base.calls and adapter._rounds == 1
 
 
-def test_repeated_invalid_handbacks_stop_without_base_or_repair_motion(adapter):
+def test_repeated_invalid_handbacks_return_to_policy_without_repair_motion(adapter):
     adapter._last_kind = 'policy'
     adapter._post_policy_expectation = {'expectation': 'grasp block'}
     adapter.supervisor.verify = lambda *a: dict(verdict='replan', why='wrong object again')
@@ -256,10 +257,10 @@ def test_repeated_invalid_handbacks_stop_without_base_or_repair_motion(adapter):
         adapter.supervisor.plans.append((history, context))
         return dict(expectation='unchanged', steps=[dict(op='gripper', arm='right', value=1), dict(op='policy')])
     adapter.supervisor.repair = repair
-    with pytest.raises(RuntimeError, match='restaging'):
-        adapter.build_trajectory('move block', observation(8), 8)
+    adapter.build_trajectory('move block', observation(8), 8)
     assert len(adapter.supervisor.plans) == 2
-    assert not adapter.base.calls and not adapter.geometry.targets
+    assert 'restaging' in adapter._repair_history[-1]['why']
+    assert len(adapter.base.calls) == 1 and not adapter.geometry.targets
 
 
 def test_invalid_grounded_action_is_corrected_before_any_motion(adapter):
@@ -271,28 +272,29 @@ def test_invalid_grounded_action_is_corrected_before_any_motion(adapter):
     adapter.grounding = ground
     def repair(task, history, context):
         adapter.supervisor.plans.append((history, context))
-        step = (dict(op='move_to', arm='left', xyz=[.8, .8, .8]) if len(adapter.supervisor.plans) == 1
+        step = (dict(op='move_to_point', arm='left', point='invented', offset=[0, 0, 0])
+                if len(adapter.supervisor.plans) == 1
                 else dict(op='move_to_point', arm='left', point='block', offset=[0, 0, .05]))
         return dict(expectation='approach block', steps=[step])
     adapter.supervisor.repair = repair
     adapter._chunks = 2; adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
     adapter.build_trajectory('move block', observation(8), 8)
     assert len(adapter.supervisor.plans) == 2 and adapter._rounds == 1
-    assert 'point reference' in adapter.supervisor.plans[-1][1]['planner_feedback']
+    assert 'measured point' in adapter.supervisor.plans[-1][1]['planner_feedback']
     assert len(adapter.geometry.targets) == 1
     assert adapter.geometry.targets[0][0] == {'left_x': .4, 'left_y': 0, 'left_z': pytest.approx(.15)}
 
 
-def test_invalid_repair_schema_has_bounded_correction_and_sends_no_motion(adapter):
+def test_invalid_repair_schema_has_bounded_correction_then_returns_to_policy(adapter):
     def repair(task, history, context):
         adapter.supervisor.plans.append((history, context))
         return dict(expectation='invalid', steps=[dict(op='unknown')])
     adapter.supervisor.repair = repair
     adapter._chunks = 2; adapter._future = (1, finished(dict(verdict='intervene', why='missed grasp')))
-    with pytest.raises(RuntimeError, match='valid repair'):
-        adapter.build_trajectory('move block', observation(8), 8)
+    adapter.build_trajectory('move block', observation(8), 8)
     assert len(adapter.supervisor.plans) == 2
-    assert not adapter.base.calls and not adapter.geometry.targets
+    assert 'no valid repair plan' in adapter._repair_history[-1]['why']
+    assert len(adapter.base.calls) == 1 and not adapter.geometry.targets
 
 
 @pytest.mark.parametrize('actor', ['policy', 'repair'])

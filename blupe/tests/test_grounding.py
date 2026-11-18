@@ -39,15 +39,22 @@ def test_pixel_uses_paired_native_image_and_named_arm_transform():
 
 
 @pytest.mark.parametrize('step', [
-    {'op': 'move_to', 'arm': 'left', 'xyz': [.3, 0, .1]},
     {'op': 'move_to_point', 'arm': 'right', 'point': 'invented', 'offset': [0, 0, 0]},
     {'op': 'move_to_point', 'arm': 'left', 'point': 'block', 'offset': [0, 0, float('nan')]},
     {'op': 'move_to_point', 'arm': 'left', 'point': 'block', 'offset': [.4, 0, 0]},
-    {'op': 'nudge', 'arm': 'left', 'dxyz': [.1, 0, 0]},
 ])
-def test_unguarded_absolute_or_ungrounded_horizontal_targets_are_rejected(step):
+def test_malformed_measured_point_references_are_rejected(step):
     value, _, _, points = ground()
     with pytest.raises(ValueError): value.resolve({'steps': [step]}, points)
+
+
+@pytest.mark.parametrize('step', [
+    {'op': 'move_to', 'arm': 'left', 'xyz': [.3, 0, .1]},
+    {'op': 'nudge', 'arm': 'left', 'dxyz': [.1, 0, 0]},
+])
+def test_raw_motion_beside_measured_points_is_the_planners_choice(step):
+    value, _, _, points = ground()
+    assert value.resolve({'steps': [step]}, points)['steps'] == [step]
 
 
 @pytest.mark.parametrize('selection', [

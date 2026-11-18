@@ -30,16 +30,17 @@ def test_sol_repair_uses_supported_parameters_strict_current_point_names_and_rea
         variants = schema['schema']['properties']['steps']['items']['anyOf']
         point = next(x for x in variants if x['properties']['op']['enum'] == ['move_to_point'])
         assert point['properties']['point']['enum'] == ['CURRENT BLOCK', 'CURRENT PLATE']
-        assert not any(x['properties']['op']['enum'] in (['move_to'], ['nudge']) for x in variants)
+        ops = [x['properties']['op']['enum'][0] for x in variants]
+        assert 'move_to' in ops and 'nudge' in ops  # raw motion is a planner choice beside points
         assert [m['role'] for m in body['messages']] == ['system', 'user', 'assistant', 'user']
         assert len([x for x in body['messages'][1]['content'] if x['type'] == 'image_url']) == 3
         assert 'not an executed or successful demonstration' in body['messages'][1]['content'][0]['text']
         assert 'CURRENT TASK' in body['messages'][-1]['content'][0]['text']
 
 
-def test_grounding_without_points_never_offers_a_hallucinated_target():
+def test_grounding_without_points_never_offers_a_hallucinated_point_name():
     variants = repair_schema({'grounding': {'points': {}}})['properties']['steps']['items']['anyOf']
-    assert not any('point' in x['properties'] or 'xyz' in x['properties'] for x in variants)
+    assert not any('point' in x['properties'] for x in variants)
     assert len(repair_example()) == 2
 
 

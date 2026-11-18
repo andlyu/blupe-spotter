@@ -2,7 +2,12 @@
 import base64
 import hashlib
 import json
+import os
+from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
 from urllib import error, request
@@ -18,159 +23,200 @@ native pixel coordinates. Select an interior point on each visible surface,
 away from edges/occlusion. Do not guess XYZ, unseen objects or
 depth. Return an empty points list if no relevant surface is clearly visible.'''
 
-SCREEN = '''You screen a bimanual YAM robot's recent task execution. The base policy
-leads. Flag concrete evidence of missed grasps, wrong objects, drops or persistent
-lack of progress. Compare object motion across the time-ordered camera frames.
-An unfinished task, a held object, or carrying it toward the target is ordinary
-progress. Do not flag a missed release merely because the gripper is still closed.
-Use preceding_packet receipts to distinguish requested actions from outcomes.
-Grippers are normalized 0 closed, 1 open; these are not millimetres, a force sensor,
-or proof that an object is held. One stationary arm can be normal. Camera/state
-timestamps are not hardware synchronized. If evidence is unreadable, flag it.
-Return JSON: {"flag":true|false,"risk":0..10,"why":"short observation"}.'''
-SCREEN += '''
-This deployment is a real tabletop scene, not RoboTwin or RoboCasa simulation.
-For a block-onto-plate or cube-into-cup task, watch the requested object and actual
-receiving surface, distinguishing the orange rectangular block from the yellow,
-blue/purple and red blocks, apple, markers and pens. Follow the task's current
-description and images; object positions can change between runs. Flag a close
-and lift whose object stays on the table, grasping a marker or other distractor,
-a dropped target, a completed release outside the requested receptacle, or repeated
-approaches/empty grasps at the same object with no improvement. A stationary target
-during the first approach is normal; repeated failed attempts are not. Screen the
-executed prefix, not future targets. A gripper-open value alone does not prove
-that a released object landed in the cup or on the plate.'''
+ROBOT = '''
+### The robot and what its numbers can and cannot tell you
 
-JUDGE = '''You are Spotter's failure-confirming supervisor for physical bimanual
-YAM arms. The frozen policy leads. You intervene only for a concrete failure;
-ordinary slow progress is not a failure. Compare task-relevant objects across
-the history, then confirm with measured state. Never infer a successful grasp
-from a gripper number alone. A closed gripper can be empty. Return only JSON:
-{"verdict":"pass"|"intervene"|"success","why":"brief evidence"}.
-Success is your visual assessment, not a privileged task-success signal.
-Each preceding_packet is the controller's completed/failed packet receipt; its
-target is what was requested, while measured is what the robot actually reached.
-Packet completion is NOT task completion or proof of a grasp. A request to keep
-closing/holding the gripper while transporting an object is normal progress.
-Do not label that a missed release. A missed release requires evidence of a
-completed OPEN request that failed, or an actual failed placement/departure;
-the object not being on the target yet is insufficient. Compare the time-ordered
-images and receipts. A completed close/lift where the object stays behind is
-concrete missed-grasp evidence. When evidence shows ongoing approach, grasp,
-lift or transport rather than a failed attempt, return pass and let the policy
-continue its next chunk. For placement tasks, success requires the object to be
-visibly released and resting on the requested target. Holding it over or beside
-the target is progress, not completed placement.'''
+This is a real tabletop scene, not RoboTwin or RoboCasa simulation. Two 6-DoF YAM
+arms with parallel-jaw grippers work a table; the instruction names one thing to do
+with one or two objects on it. Track the objects the instruction names and no others.
+Object positions change between runs: read them from the current images, never from
+an earlier run or a recorded example.
 
-REPAIR = '''Plan a short Spotter repair from the CURRENT measured state and
-camera frames, which may differ from the earlier detected failure. Keep the
-other hand at its measured state unless it also needs a correction. All xyz
-coordinates are metres in the NAMED ARM'S OWN BASE FRAME (+x forward,+y left,+z
-up). Rotations are yaw radians relative to the run's initial orientation.
-Grippers: 0 closed, 1 open; no force/contact oracle. The supplied bounds are
-the station's configured bounds. No simulator reset, teleport, or rewind exists.
-Return only JSON: {"why":"brief evidence","expectation":"what should change
-visually after this repair","steps":[...]}. Obey context.max_plan_steps and the
-remaining_plan_rounds budget. Each step must name
-"arm":"left"|"right", except a final {"op":"policy"} hand-back. Supported steps:
+The two arms are not interchangeable. Each window gives both hands' measured
+Cartesian position ("cartesian", metres, each arm in its own base frame) and joint
+angles. Decide which hand owns the task before judging it: on a one-handed task the
+other arm sitting still for the whole run is normal.
+
+The gripper value is a normalized opening, 0 closed and 1 open, not a width and not
+a force reading. No force or contact sensing exists. The one state the number alone
+identifies is "shut with nothing between the fingers". A partial opening may be a
+firm grip or a hand that stopped there: the number cannot tell you something is held.
+Lift and look: an object that rises with the hand is held.
+
+Each preceding_packet is the controller's receipt for the last motion: its target is
+what was requested, measured is what the robot reached. A completed packet is not a
+completed task and not proof of a grasp. Camera and state timestamps are not
+hardware synchronized.
+
+You see three cameras: top (overhead, the whole table) and the left and right
+side views. Use the side views for height, contact and occlusion; they never supply
+coordinates.'''
+
+GOAL = '''
+### Judge against the goal, not against the activity
+
+Name the goal state in one sentence (the block resting on the plate and released,
+the cube inside the cup) and each window ask only whether the scene is closer to it
+than before. Compare the named objects across the time-ordered frames, not the arms.
+
+Motion is not progress. A policy that has lost the plot keeps reaching, opening and
+closing, looking busy in every frame. If nothing the instruction names has moved for
+two or three windows while the hands kept moving, it is repeating something that does
+not work and will keep repeating it. Slow is not stalled: a hand that pauses or
+re-aims and then continues is working. The run has a fixed time limit, and every
+repair spends the same clock the policy needs.
+
+Concrete failures: a close and lift after which the object stays on the table; the
+wrong object grasped (a distractor of another colour or shape, a marker, a pen); a
+target dropped; a release that leaves the object outside or on the rim of the
+receptacle; repeated failed attempts at the same object with no improvement.
+
+Not failures: the first approach, during which the target is stationary — the first approach is normal;
+a hand open for many chunks early on; a held object being carried toward the target;
+the gripper still closed during transport (do not call a missed release from a
+closed gripper alone); an object held over or beside the target, which is progress,
+not placement.'''
+
+SCREEN = '''You screen a bimanual YAM robot's recent execution for Spotter, which repairs
+real failures of the base policy. The base policy leads; your flag sends the window
+to a stronger judge, not straight to a repair. Flag concrete evidence of a failure;
+do not flag ordinary slow progress. If the evidence is unreadable, flag it.''' + ROBOT + GOAL + '''
+Screen the executed prefix, not future targets. A gripper-open value alone does not
+prove that a released object landed in the cup or on the plate.
+Return only JSON: {"flag":true|false,"risk":0..10,"why":"short observation"}.'''
+
+JUDGE = '''You are Spotter's failure-confirming judge for a bimanual YAM robot. The frozen
+base policy leads; you decide whether this window needs Spotter to take over.''' + ROBOT + GOAL + '''
+
+### When intervening pays
+
+A failed intervention is not free: it spends the policy's time and usually leaves
+the scene no better. So the question is not "is this failing?" but "can Spotter fix
+this with its tools in the time left?". Intervene when all three hold:
+
+1. You can name the specific problem in the pictures (missed grasp, wrong object,
+   dropped target, release off target, the same failed attempt repeated) and say what
+   the goal state looks like.
+2. A short supported repair fixes it: re-stage the hand, close on the right object,
+   verify the lift, carry, release inside the receptacle, withdraw.
+3. Enough of the run remains for that repair and whatever the policy still has to do.
+
+When those hold, act at the first window you can see the problem; acting late is the
+same as not acting. When the evidence shows ongoing approach, grasp, lift or
+transport, return pass and let the policy run its next chunk. A missed release needs
+a completed OPEN request that failed, or an actual failed placement; the object not
+being on the target yet is not one.
+
+Success is your visual judgement, not a privileged signal: the object visibly
+released and resting on the requested target.
+Return only JSON: {"verdict":"pass"|"intervene"|"success","why":"brief evidence"}.'''
+
+REPAIR = '''Plan a Spotter repair for a bimanual YAM robot from the CURRENT measured state
+and camera frames, which may differ from the window where the failure was found.''' + ROBOT + '''
+
+### Coordinates and the tools
+
+All xyz are metres in the NAMED ARM'S OWN BASE FRAME (+x forward, +y left, +z up).
+Rotations are yaw radians relative to the run's initial orientation. The supplied
+bounds are the station's configured workspace. No reset, teleport or rewind exists.
+Every step names "arm":"left"|"right", except a {"op":"policy"} hand-back. Steps:
 {"op":"nudge","arm":"left","dxyz":[dx,dy,dz]},
 {"op":"lift","arm":"left","dz":number,"intent":"clearance"|"grasp_check"},
 {"op":"move_to","arm":"left","xyz":[x,y,z]},
 {"op":"rotate","arm":"left","yaw":number},
 {"op":"gripper","arm":"left","value":0..1},
-{"op":"policy"}. The executor returns fresh measured feedback after each step;
-after a lift or completed plan segment it asks you to verify the visible outcome before
-continuing. Carry out a complete supported correction, including approach,
-grasp, verified lift, transfer, release and withdrawal when the evidence supports
-it; do not automatically hand back after merely reaching the object. End with
-policy ONLY when handing back is useful. A segment without policy stays under
-Spotter for fresh observations and another bounded plan round. If the task is
-already making ordinary policy progress or no safe correction is supported,
-explain that and return the policy hand-back.'''
-REPAIR += '''
-Give every lift an explicit intent: clearance raises/re-stages the hand before a
-grasp, while grasp_check follows an attempted close and must lift the intended
-object. A clearance lift does not require the object to move. These intents do
-not claim that a grasp succeeded; verification uses fresh images.'''
-REPAIR += '''
-Do not open a gripper just because the task is unfinished. Confirm in current
-images that a held object is actually over the intended receiving surface before
-releasing it. If the base policy is still carrying the object toward that surface,
-do not interrupt that normal progress. Missing 3D targets never justify guessed
-positions or releases. Consider the measured clearance/re-observation procedure
-below before handing back for missing depth. Completed packet intent is not proof
-of grasp or placement.'''
-REPAIR += '''
-When context.grounding is supplied, its points are measured surface coordinates
-from the latest paired native overhead RGB-D image. Each point provides separate
-left/right arm-base XYZ. Choose an arm whose approach AND destination fit its
-bounds; the right hand need not do a task just because it moved previously.
-Use {"op":"move_to_point","arm":"left"|"right","point":"exact point name",
-"offset":[dx,dy,dz]} for ALL horizontal repair positioning. Offsets are metres
-in the selected arm base, each no larger than 0.15 in magnitude. Approach above
-the surface first; surface Z is the object top, not automatically the grasp
-center. Select an appropriate small grasp-height offset, then close and lift
-to verify before transport. Do not emit raw move_to or horizontal nudge when
-grounding is supplied. Lift, rotate, gripper and policy hand-back remain allowed.
-If a requested point was omitted for missing/noisy depth or occlusion, inspect
-ALL camera views. When the arm visibly obstructs the target and a bounded
-vertical lift is supported by measured pose, free space and current bounds,
-return a short lift with intent=clearance, keeping the gripper and other arm
-unchanged. Do not assume the hand is empty or release a held object. End this
-segment there: Spotter verifies the lift, captures fresh RGB-D, reselects visible
-surface points and asks for another plan BEFORE handing back to Dream or using
-old targets. Side views help assess occlusion; they do not supply invented XYZ.
-After clearance, check whether the target is clearly visible and use only the
-newly measured points. Do not repeat blind lifts when the view is already clear,
-depth remains unavailable, or no safe clearance is supported; explain the actual
-limitation. Experimental calibration is not a contact oracle; preserve its
-uncertainty.'''
-REPAIR += '''
-Context.previous_repairs records planned steps and whether each reached a policy
-handback, completed clearance or failed; intervention numbers retain earlier
-rounds across repeated interventions. Planned steps are intent, not proof of
-execution. Use this causal history with the current visual evidence.
-When failed_policy_handback is true, the prior handback has already been tested
-and failed: another unchanged handback, or only opening the gripper again, does
-not repair that failure. When a previous restaging/handback or repeated policy
-attempt failed, prefer finishing the supported reach, close and verified lift
-yourself, then transport/release/withdraw if the measured destination permits it.
-A manual close is allowed when current images and grounded grasp geometry support
-it, including after an earlier restaging. Verify the intended object rises before
-continuing transport; replan an empty grasp from fresh observations.
-Do not spend the remaining rounds repeating the same ineffective release and
-handback. Keep inactive arms at their measured state and verify a lift before
-transport. If no valid repair is supported, explain the limitation explicitly.'''
+{"op":"policy"}.
+Obey context.max_plan_steps; context.remaining_plan_rounds is how many more plan
+rounds this intervention has. When they run out, or a plan cannot be made valid,
+Spotter hands control back to the policy and keeps watching; previous_repairs then
+records a gave_up_handback. Keep the other arm at its measured state, above all if
+it holds something, unless it also needs a correction.
 
-VERIFY = '''Verify the last Spotter repair using fresh CURRENT images and measured
-state against the recorded expectation. Return JSON {"verdict":"verified"|
-"replan"|"success","why":"brief visual evidence"}. A closed gripper alone is
-not proof of a grasp. Use replan if the expectation is not visibly met.
-Success means the whole user's task is visually complete, not just the repair
-step. For placement, the object must be visibly released and resting on the
-target. An object still held over or beside it has not been placed.'''
-VERIFY += '''
+When context.grounding is supplied, its points are measured surface coordinates from
+the latest overhead RGB-D image, each with separate left- and right-arm XYZ. To go
+to a measured object or surface, use
+{"op":"move_to_point","arm":"left"|"right","point":"exact point name","offset":[dx,dy,dz]}
+(offsets in the selected arm's base, each at most 0.15 m): it is re-measured just
+before execution, so it tracks the object better than copying its numbers into a
+move_to. move_to and nudge remain available, for example to move relative to the
+hand's own measured position. A point's Z is the object's top surface,
+not its grasp centre: approach above it first, then choose a small grasp-height
+offset. Choose the arm whose approach AND destination both fit its bounds; a hand
+need not do the task just because it moved last.
+
+### What a repair looks like here
+
+1. Decide which arm is in trouble and what the goal state is.
+2. If the policy was doing the right thing and only the hand's line was off, re-stage
+   the open hand where it can work from and hand back with {"op":"policy"}.
+3. If the fault is what or where — the wrong object, a release off target, a grasp the
+   policy has already missed after a hand-back — do that part yourself all the way to
+   its end state: approach, close, a grasp_check lift, carry, release, withdraw. A
+   hand-back after a small fix will redo the same wrong thing.
+4. A plan without a final policy step stays under Spotter: after a lift or a
+   completed segment, fresh images verify it and you plan the next round.
+
+Every lift carries an intent. clearance raises or re-stages the hand before a grasp
+and does not need the object to move. grasp_check follows a close and must raise the
+intended object; replan an empty grasp from fresh observations. Never carry on as if
+holding something a grasp_check did not show rising. Release only when the current
+images show the held object over the interior of the receptacle, not its rim; do not
+open a gripper just because the task is unfinished. If the policy is still carrying
+the object toward the target, that is progress: hand back.
+
+### Missing depth
+
+If a point you need is absent (missing or noisy depth, or the arm hides the target),
+inspect all views. When the arm visibly blocks the target and a bounded vertical lift
+fits the measured pose and bounds, return only a short clearance lift, gripper and
+other arm unchanged, and end the segment: Spotter verifies it, captures fresh RGB-D,
+re-selects points and asks you again. Use only the new points afterwards. Missing 3D
+targets never justify guessed positions or releases; do not repeat blind lifts when
+the view is already clear or depth stays unavailable — say what limits you.
+
+### Do not repeat what failed
+
+context.previous_repairs records, across interventions, each planned plan and
+whether it reached a hand-back, completed a clearance, or failed. Planned steps are
+intent, not proof they ran. A recipe that already failed at this target will fail
+again: change something real — the arm, the approach height or offset, the yaw, or
+finish the step yourself. When failed_policy_handback is true, an unchanged
+hand-back, or only reopening the gripper, does not repair it.
+
+If the policy is making ordinary progress, or no supported repair fits, say so and
+return just the hand-back.
+Return only JSON: {"why":"brief evidence","expectation":"what should change visually
+after this repair","steps":[...]}.'''
+
+VERIFY_BASE = '''Verify the last Spotter repair step for a bimanual YAM robot using fresh CURRENT
+images and measured state, against the recorded expectation.''' + ROBOT + '''
+
+Return only JSON {"verdict":"verified"|"replan"|"success","why":"brief visual evidence"}.
+replan when the expectation is not visibly met. A closed gripper alone is not proof
+of a grasp. success means the whole task is visibly complete, not just the repair
+step: for placement, the object is released and resting on the target; held over or
+beside it is not placed.'''
+
+VERIFY = VERIFY_BASE + '''
 For checkpoint.scope="intermediate", judge only the completed_step and the
 already-executed prefix. remaining_steps have NOT run yet: do not reject a
 successful lift because pending transport or release has not happened. At a lift
 checkpoint, verified requires visible evidence that the intended object rose
 with the gripper; if it stayed on the table or the gripper is empty, replan.
 The full-plan expectation describes the eventual result, not a demand that all
-remaining steps already happened. Even at an intermediate checkpoint, success
-still requires the whole task visibly complete and the object released on target.'''
+remaining steps already happened.'''
 
-VERIFY_INTENT = VERIFY.split('For checkpoint.scope=')[0] + '''
-For an intermediate checkpoint, verify ONLY the completed step and executed prefix.
-Remaining steps have NOT run. Use completed_step.intent and the plan expectation.
-A clearance lift raises/re-stages the hand before grasping: it does NOT require
-the target to rise; the target remaining on the table is normal. Check the hand
-moved as intended and the scene is appropriate for the pending approach/rotation/grasp.
-A grasp_check lift follows an attempted close: the intended target must visibly
-rise with the hand. Target still on the table or an empty grasp means replan.
-For unspecified intent, infer from planned steps/expectation; never from the lift
-opcode alone. Never infer holding from a gripper fraction alone. Do not reject a
-step just because pending transport/release is incomplete. Success still requires
-the whole placement complete with the object released on target.'''
+VERIFY_INTENT = VERIFY_BASE + '''
+For an intermediate checkpoint, verify ONLY the completed step and the executed
+prefix; remaining steps have NOT run. Use completed_step.intent and the plan
+expectation. A clearance lift raises or re-stages the hand before grasping: it
+does NOT require the target to rise, and the target staying on the table is
+normal. Check the hand moved as intended and the scene suits the pending approach,
+rotation or grasp. A grasp_check lift follows an attempted close: the intended
+target must visibly rise with the hand; a target still on the table or an empty
+grasp means replan. For unspecified intent, infer it from the planned steps and
+expectation, never from the lift opcode alone. Do not reject a step only because
+pending transport or release is incomplete.'''
 
 VISION_QWEN = 'qwen/qwen3-vl-235b-a22b-instruct'
 
@@ -259,12 +305,15 @@ class ReadinessCache:
 class VisionSupervisor:
     def __init__(self, endpoint, model, key='', *, timeout=90, api_style='vllm', readiness_cache=None,
                  use_repair_example=False):
-        if api_style not in {'vllm', 'openrouter'}:
+        if api_style not in {'vllm', 'openrouter', 'codex'}:
             raise ValueError('Unknown supervisor API style')
         if api_style == 'openrouter' and not key.strip():
             raise ValueError('OpenRouter supervisor requires a server-owned API key')
         self.endpoint, self.model, self._key = endpoint.rstrip('/'), model, key
-        self.timeout, self.api_style = timeout, api_style
+        # A proxied `codex exec` takes ~20 s and occasionally ~120 s; shorter
+        # bounds would kill healthy calls and spend quota on retries.
+        self.timeout = max(timeout, 150) if api_style == 'codex' else timeout
+        self.api_style = api_style
         self.readiness_cache = readiness_cache
         self.use_repair_example = use_repair_example
         self.last_call = None
@@ -276,7 +325,7 @@ class VisionSupervisor:
         return self._ready(cancelled)
 
     def _ready(self, cancelled):
-        if self.api_style == 'openrouter':
+        if self.api_style in ('openrouter', 'codex'):
             if cancelled():
                 raise RuntimeError('Spotter preparation cancelled')
             # The public model catalog does not verify authentication or credits.
@@ -326,6 +375,8 @@ class VisionSupervisor:
         if schema is not None:
             body['response_format'] = {'type': 'json_schema', 'json_schema': {
                 'name': 'spotter_repair', 'strict': True, 'schema': schema}}
+        if self.api_style == 'codex':
+            return self._codex_call(body['messages'], schema)
         if self.api_style == 'openrouter':
             body['provider'] = {'require_parameters': True, 'sort': 'latency'}
             # This instruct checkpoint does not advertise a reasoning parameter.
@@ -356,6 +407,61 @@ class VisionSupervisor:
         except Exception as exc:
             # Provider bodies/URLs can carry credentials. Log only the exception class.
             raise RuntimeError('Spotter supervisor request failed (' + type(exc).__name__ + ')') from None
+
+    def _codex_call(self, messages, schema):
+        """Local `codex exec` with the operator's ChatGPT login; endpoint names the binary."""
+        binary = shutil.which(self.endpoint or 'codex')
+        if not binary:
+            raise RuntimeError('Spotter Codex CLI was not found on this host')
+        with tempfile.TemporaryDirectory(prefix='spotter-codex-', ignore_cleanup_errors=True) as root:
+            root, lines, images = Path(root), [], []
+            for message in messages:
+                lines.append('## ' + message['role'].upper())
+                content = message['content']
+                if isinstance(content, str):
+                    lines.append(content)
+                    continue
+                for part in content:
+                    if part['type'] == 'text':
+                        lines.append(part['text'])
+                    else:
+                        path = root / f'image-{len(images) + 1}.jpg'
+                        path.write_bytes(base64.b64decode(part['image_url']['url'].split(',', 1)[1]))
+                        images.append(path)
+                        lines.append(f'[attached image {len(images)}]')
+            lines.append('Attached images are numbered in the order above. Reply with only the JSON object.')
+            output = root / 'last-message.txt'
+            # SPOTTER_CODEX_USE_CONFIG=1 keeps $CODEX_HOME/config.toml (an API-key relay
+            # provider); forcing the ChatGPT login there makes codex delete that auth.json.
+            login = ([] if os.environ.get('SPOTTER_CODEX_USE_CONFIG') == '1' else
+                     ['--ignore-user-config', '-c', 'forced_login_method="chatgpt"',
+                      '-c', 'model_provider="openai"'])
+            command = [binary, 'exec', *login, '--skip-git-repo-check', '--ephemeral',
+                       '--model', self.model, '-o', str(output), '-C', str(root),
+                       '-c', 'model_reasoning_effort="low"', '-c', 'sandbox_mode="read-only"',
+                       '-c', 'approval_policy="never"', '-c', 'web_search="disabled"',
+                       '-c', 'features.shell_tool=false', '-c', 'features.multi_agent=false',
+                       '-c', 'features.apps=false', '-c', 'features.hooks=false']
+            if schema is not None:
+                (root / 'schema.json').write_text(json.dumps(schema))
+                command += ['--output-schema', str(root / 'schema.json')]
+            for path in images:
+                command += ['--image', str(path)]
+            command += ['-']
+            started = time.monotonic()
+            try:
+                subprocess.run(command, input='\n'.join(lines), text=True, timeout=self.timeout,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                text = output.read_text()
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('Spotter Codex request timed out') from None
+            except Exception as exc:
+                raise RuntimeError('Spotter Codex request failed (' + type(exc).__name__ + ')') from None
+        self.last_call = dict(model=self.model, duration_s=time.monotonic()-started, usage=None)
+        try:
+            return object_from_text(text)
+        except Exception as exc:
+            raise RuntimeError('Spotter Codex request failed (' + type(exc).__name__ + ')') from None
 
     @staticmethod
     def _api_error(status):
